@@ -85,7 +85,7 @@ class SearchService:
 
         try:
             json_data = json_from_response(response)
-            document = canonicalise(json_data, include_security=True)
+            document = canonicalise(json_data, include_security=True, outbound=False)
         except ValueError:
             return None
         type = document.get("type", "unknown").lower()

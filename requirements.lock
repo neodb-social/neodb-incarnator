@@ -6,6 +6,7 @@
 #   features: []
 #   all-features: false
 #   with-sources: false
+#   generate-hashes: false
 
 aiohttp==3.9.5
     # via pywebpush
@@ -41,11 +42,13 @@ cffi==1.16.0
 charset-normalizer==3.3.2
     # via requests
 click==8.1.7
+    # via rq
     # via uvicorn
 cryptography==42.0.7
     # via http-ece
     # via py-vapid
     # via pywebpush
+deepmerge==1.1.1
 dj-database-url==2.1.0
 django==4.2.13
     # via dj-database-url
@@ -147,10 +150,12 @@ python-dotenv==1.0.1
     # via pydantic-settings
 pywebpush==2.0.0
 redis==5.0.4
+    # via rq
 requests==2.31.0
     # via google-api-core
     # via google-cloud-storage
     # via pywebpush
+rq==1.16.2
 rsa==4.9
     # via google-auth
 s3transfer==0.10.1

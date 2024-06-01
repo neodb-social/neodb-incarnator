@@ -116,6 +116,6 @@ class PostTypeDataEncoder(json.JSONEncoder):
 class PostTypeDataDecoder(json.JSONDecoder):
     def decode(self, *args, **kwargs):
         s = super().decode(*args, **kwargs)
-        if isinstance(s, dict):
+        if isinstance(s, dict) and "type" in s:
             return PostTypeData.model_validate(s).root
         return s

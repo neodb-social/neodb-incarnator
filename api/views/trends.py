@@ -43,6 +43,7 @@ def trends_statuses(
         .visible_to(request.identity)
         .filter(published__gte=since)
         .annotate(num_interactions=Count("interactions"))
+        .filter(num_interactions__gt=2)
         .order_by("-num_interactions", "-published")[offset : offset + limit]
     )
     return schemas.Status.map_from_post(list(posts), request.identity)

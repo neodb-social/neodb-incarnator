@@ -9,6 +9,8 @@ import urlman
 from django.conf import settings
 from django.core.exceptions import ObjectDoesNotExist
 from django.db import IntegrityError, models, transaction
+from django.db.models.signals import post_save
+from django.dispatch import receiver
 from django.utils import timezone
 from lxml import etree
 
@@ -56,7 +58,7 @@ class IdentityStates(StateGraph):
 
     edited = State(try_interval=300, attempt_immediately=True)
     deleted = State(try_interval=300, attempt_immediately=True)
-    deleted_fanned_out = State(delete_after=86400 * 7)
+    deleted_fanned_out = State(externally_progressed=True)
 
     moved = State(try_interval=300, attempt_immediately=True)
     moved_fanned_out = State(externally_progressed=True)
@@ -78,10 +80,18 @@ class IdentityStates(StateGraph):
         return [cls.deleted, cls.deleted_fanned_out]
 
     @classmethod
-    def targets_fan_out(cls, identity: "Identity", type_: str) -> None:
+    def targets_fan_out(cls, identity: "Identity", type_: str, broadcast=False) -> None:
         from activities.models import FanOut
         from users.models import Follow
 
+        if broadcast:
+            for target in Identity.objects.filter(
+                local=False, shared_inbox_uri__isnull=False
+            ).distinct("shared_inbox_uri"):
+                FanOut.objects.create(
+                    identity=target, type=type_, subject_identity=identity
+                )
+            return
         # Fan out to each target
         shared_inboxes = set()
         for follower in Follow.objects.select_related("source", "target").filter(
@@ -166,7 +176,7 @@ class IdentityStates(StateGraph):
             instance.interactions, PostInteractionStates.undone
         )
         # Fanout the deletion and unfollow from both directions
-        cls.targets_fan_out(instance, FanOut.Types.identity_deleted)
+        cls.targets_fan_out(instance, FanOut.Types.identity_deleted, broadcast=True)
         for follower in Follow.objects.filter(target=instance):
             follower.transition_perform(FollowStates.rejecting)
         for following in Follow.objects.filter(source=instance):
@@ -362,7 +372,7 @@ class Identity(StatorModel):
                 remote_url=self.icon_uri,
             )
         else:
-            return StaticAbsoluteUrl("img/unknown-icon-128.png")
+            return AutoAbsoluteUrl("/s/img/avatar.svg")
 
     def local_image_url(self) -> RelativeAbsoluteUrl | None:
         """
@@ -641,7 +651,7 @@ class Identity(StatorModel):
         self.ensure_uris()
         response = {
             "id": self.actor_uri,
-            "type": self.actor_type.title(),
+            "type": "Tombstone" if self.deleted else self.actor_type.title(),
             "inbox": self.inbox_uri,
             "outbox": self.outbox_uri,
             "featured": self.featured_collection_uri,
@@ -668,6 +678,12 @@ class Identity(StatorModel):
                 "type": "Image",
                 "mediaType": media_type_from_filename(self.icon.name),
                 "url": self.icon.url,
+            }
+        elif self.icon_uri:
+            response["icon"] = {
+                "type": "Image",
+                "mediaType": media_type_from_filename(self.icon_uri),
+                "url": self.icon_uri,
             }
         if self.image:
             response["image"] = {
@@ -912,7 +928,7 @@ class Identity(StatorModel):
 
         try:
             json_data = json_from_response(response)
-            data = canonicalise(json_data, include_security=True)
+            data = canonicalise(json_data, include_security=True, outbound=False)
             total = data.get("totalItems", 0)
             # canonicalise seems to turn single-item `items` list into a dict?? gross
             if value := data.get("orderedItems"):
@@ -923,13 +939,10 @@ class Identity(StatorModel):
                 items = []
             return total, items
         except ValueError:
-            # Some servers return these with a 200 status code!
-            if b"not found" in response.content.lower():
-                return 0, []
-            raise ValueError(
-                "JSON parse error fetching collection",
-                response.content,
+            logger.info(
+                f"JSON parse error fetching collection {uri} {response.content}"
             )
+            return 0, []
 
     @classmethod
     def fetch_pinned_post_uris(cls, client: httpx.Client, uri: str) -> list[str]:
@@ -1009,6 +1022,7 @@ class Identity(StatorModel):
             return False
         if "type" not in document:
             return False
+        _neodb_sync = self.username != document.get("preferredUsername")
         self.name = document.get("name")
         self.profile_uri = document.get("url")
         self.inbox_uri = document.get("inbox")
@@ -1107,6 +1121,8 @@ class Identity(StatorModel):
             }
         )
 
+        if _neodb_sync:
+            settings.NEODB_MQ.enqueue("takahe.ap_handlers.identity_fetched", self.id)
         return True
 
     ### OpenGraph API ###
@@ -1249,3 +1265,9 @@ class Identity(StatorModel):
     @cached_property
     def config_identity(self) -> Config.IdentityOptions:
         return Config.load_identity(self)
+
+
+@receiver(post_save, sender=Identity)
+def _neodb_identity_handler(sender, instance: Identity, created: bool, **kwargs):
+    if created and not instance.local and instance.username:
+        settings.NEODB_MQ.enqueue("takahe.ap_handlers.identity_fetched", instance.id)

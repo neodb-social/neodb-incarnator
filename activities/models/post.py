@@ -3,6 +3,7 @@ import html
 import json
 import logging
 import mimetypes
+import re
 import ssl
 from collections.abc import Iterable
 from typing import Optional
@@ -10,6 +11,7 @@ from urllib.parse import urlparse
 
 import httpx
 import urlman
+from deepmerge import always_merger
 from django.conf import settings
 from django.contrib.postgres.indexes import GinIndex
 from django.contrib.postgres.search import SearchVector
@@ -116,7 +118,7 @@ class PostStates(StateGraph):
         # Only fan out if the post was published in the last day or it's local
         # (we don't want to fan out anything older that that which is remote)
         if instance.local or (timezone.now() - instance.published) < datetime.timedelta(
-            days=1
+            days=settings.FANOUT_LIMIT_DAYS
         ):
             cls.targets_fan_out(instance, FanOut.Types.post)
         instance.ensure_hashtags()
@@ -775,6 +777,8 @@ class Post(StatorModel):
         for field in ["to", "cc", "tag", "attachment"]:
             if not value[field]:
                 del value[field]
+        if isinstance(self.type_data, dict) and "object" in self.type_data:
+            always_merger.merge(value, self.type_data["object"])
         return value
 
     def to_create_ap(self):
@@ -960,6 +964,8 @@ class Post(StatorModel):
             post.url = data.get("url", data["id"])
             if post.type in (cls.Types.article, cls.Types.question):
                 post.type_data = PostTypeData(root=data).root
+            if "relatedWith" in data:
+                post.type_data = {"object": data}
             try:
                 # apparently sometimes posts (Pages?) in the fediverse
                 # don't have content, but this shouldn't be a total failure
@@ -972,6 +978,11 @@ class Post(StatorModel):
             if not post.content and post.summary:
                 post.content = post.summary
                 post.summary = None
+            post.content = re.sub(
+                r'href="(https?://[^/"]+)/~neodb~(/[^"]+)"',
+                'href="https://' + settings.SETUP.MAIN_DOMAIN + r'/search?r=1&q=\1\2"',
+                post.content,
+            )
             post.sensitive = data.get("sensitive", False)
             post.published = parse_ld_date(data.get("published"))
             post.edited = parse_ld_date(data.get("updated"))
@@ -1069,6 +1080,10 @@ class Post(StatorModel):
                         )
                 else:
                     parent.calculate_stats()
+            if "relatedWith" in data:
+                settings.NEODB_MQ.enqueue(
+                    "takahe.ap_handlers.post_fetched", post.pk, data
+                )
         return post
 
     @classmethod
@@ -1099,7 +1114,7 @@ class Post(StatorModel):
                 try:
                     json_data = json_from_response(response)
                     post = cls.by_ap(
-                        canonicalise(json_data, include_security=True),
+                        canonicalise(json_data, include_security=True, outbound=False),
                         create=True,
                         update=True,
                         fetch_author=True,
@@ -1182,6 +1197,14 @@ class Post(StatorModel):
             # Ensure the actor on the request authored the post
             if not post.author.actor_uri == data["actor"]:
                 raise ValueError("Actor on delete does not match object")
+            if (
+                post.type_data
+                and "object" in post.type_data
+                and "relatedWith" in post.type_data.get("object", {})
+            ):
+                settings.NEODB_MQ.enqueue(
+                    "takahe.ap_handlers.post_deleted", post.pk, post.type_data["object"]
+                )
             post.delete()
 
     @classmethod
