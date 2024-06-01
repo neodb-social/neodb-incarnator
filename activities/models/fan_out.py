@@ -1,4 +1,5 @@
 import httpx
+from django.conf import settings
 from django.db import models
 
 from activities.models.timeline_event import TimelineEvent
@@ -105,13 +106,8 @@ class FanOutStates(StateGraph):
 
             # Handle deleting local posts
             case (FanOut.Types.post_deleted, True):
-                post = instance.subject_post
-                if instance.identity.local:
-                    # Remove all timeline events mentioning it
-                    TimelineEvent.objects.filter(
-                        identity=instance.identity,
-                        subject_post=post,
-                    ).delete()
+                # already done in Post.handle_deleted
+                pass
 
             # Handle sending remote post deletes
             case (FanOut.Types.post_deleted, False):
@@ -126,6 +122,8 @@ class FanOutStates(StateGraph):
                         ),
                         body=canonicalise(post.to_delete_ap()),
                     )
+                except ValueError:
+                    pass  # ignore 401 when identity deletion is processed by remote earlier
                 except httpx.RequestError:
                     return
 
@@ -159,6 +157,13 @@ class FanOutStates(StateGraph):
                     identity=instance.identity,
                     interaction=interaction,
                 )
+                settings.NEODB_MQ.enqueue(
+                    "takahe.ap_handlers.post_interacted",
+                    interaction.pk,
+                    interaction.type,
+                    interaction.post.pk,
+                    interaction.identity_id,
+                )
 
             # Handle sending remote boosts/likes/votes/pins
             case (FanOut.Types.interaction, False):
@@ -190,6 +195,13 @@ class FanOutStates(StateGraph):
                 TimelineEvent.delete_post_interaction(
                     identity=instance.identity,
                     interaction=interaction,
+                )
+                settings.NEODB_MQ.enqueue(
+                    "takahe.ap_handlers.post_uninteracted",
+                    interaction.pk,
+                    interaction.type,
+                    interaction.post.pk,
+                    interaction.identity_id,
                 )
 
             # Handle sending remote undoing boosts/likes/pins
@@ -241,6 +253,8 @@ class FanOutStates(StateGraph):
                     )
                 except httpx.RequestError:
                     return
+                except ValueError:
+                    pass  # do not retry if 4xx
 
             # Handle move for local follower
             case (FanOut.Types.identity_moved, True):

@@ -36,21 +36,6 @@
                             <img src="{{ config.site_icon }}" width="32">
                             {{ config.site_name }}
                         </a>
-                        {% if user.is_authenticated %}
-                            {% if identity %}
-                                <a href="{{ identity.urls.settings }}" title="Settings"><i class="fa-solid fa-user"></i></a>
-                            {% else %}
-                                <a href="/settings" title="Settings"><i class="fa-solid fa-user"></i></a>
-                            {% endif %}
-                            {% if user.admin %}
-                                <a href="/admin" title="Administration"><i class="fa-solid fa-screwdriver-wrench"></i></a>
-                            {% endif %}
-                        {% elif not config.hide_login %}
-                            <a href="{% url "login" %}" title="Login"><i class="fa-solid fa-right-to-bracket"></i></a>
-                            {% if config.signup_allowed %}
-                                <a href="{% url "signup" %}" title="Create Account"><i class="fa-solid fa-user-plus"></i></a>
-                            {% endif %}
-                        {% endif %}
                     </menu>
                 </header>
 

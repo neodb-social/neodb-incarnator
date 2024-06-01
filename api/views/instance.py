@@ -9,7 +9,7 @@ from activities.models import Post
 from api import schemas
 from core.models import Config
 from hatchway import api_view
-from takahe import __version__
+from takahe.neodb import __version__ as __neodb_version__
 from users.models import Domain, Identity
 
 
@@ -33,7 +33,7 @@ def instance_info_v1(request) -> dict:
         "short_description": "",
         "description": "",
         "email": "",
-        "version": f"takahe/{__version__}",
+        "version": f"neodb/{__neodb_version__}",
         "urls": {},
         "stats": stats,
         "thumbnail": request.config.site_banner,
@@ -89,7 +89,7 @@ def instance_info_v2(request) -> dict:
     return {
         "domain": current_domain.domain,
         "title": Config.system.site_name,
-        "version": f"takahe/{__version__}",
+        "version": f"neodb/{__neodb_version__}",
         "source_url": "https://github.com/jointakahe/takahe",
         "description": "",
         "usage": {

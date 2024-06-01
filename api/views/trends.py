@@ -9,7 +9,7 @@ from activities.models import Hashtag, Post
 from api import schemas
 from api.decorators import scope_required
 from core.models import Config
-from hatchway import api_view
+from hatchway import api_view, Schema, Field
 
 
 @scope_required("read")
@@ -57,8 +57,27 @@ def trends_statuses(
         Post.objects.not_hidden()
         .filter(id__in=popular_post_ids[offset : offset + limit])
         .order_by("-published")
+        .visible_to(request.identity)
     )
     return schemas.Status.map_from_post(list(posts), request.identity)
+
+
+class Link(Schema):
+    type: str = "link"
+    title: str
+    description: str
+    url: str
+    image: str
+    html: str = ""
+    width: int = Field(default=400)
+    height: int = Field(default=225)
+    author_name: str = ""
+    author_url: str = ""
+    provider_name: str = ""
+    provider_url: str = ""
+    blurhash: str = ""
+    embed_url: str = ""
+    history: list = []
 
 
 @scope_required("read")
@@ -66,7 +85,7 @@ def trends_statuses(
 def trends_links(
     request: HttpRequest,
     limit: int = 10,
-    offset: int | None = None,
-) -> list:
-    # We don't implement this yet
-    return []
+    offset: int = 0,
+) -> list[Link]:
+    links = cache.get("trends_links", [])
+    return links[offset : offset + limit]

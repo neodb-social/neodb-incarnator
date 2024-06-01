@@ -9,8 +9,11 @@ import urlman
 from django.conf import settings
 from django.core.exceptions import ObjectDoesNotExist
 from django.db import IntegrityError, models, transaction
+from django.db.models.signals import post_save
+from django.dispatch import receiver
 from django.utils import timezone
 from lxml import etree
+from pyld.jsonld import JsonLdError
 
 from api.models.push import PushSubscription, PushType
 from core.exceptions import ActorMismatchError
@@ -35,7 +38,7 @@ from core.uris import (
 )
 from stator.exceptions import TryAgainLater
 from stator.models import State, StateField, StateGraph, StatorModel
-from users.models.domain import Domain
+from users.models.domain import Domain, DomainStates
 from users.models.inbox_message import InboxMessage
 from users.models.system_actor import SystemActor
 
@@ -53,10 +56,11 @@ class IdentityStates(StateGraph):
 
     outdated = State(try_interval=3600, force_initial=True)
     updated = State(try_interval=86400 * 7, attempt_immediately=False)
+    connection_issue = State(externally_progressed=True)
 
     edited = State(try_interval=300, attempt_immediately=True)
     deleted = State(try_interval=300, attempt_immediately=True)
-    deleted_fanned_out = State(delete_after=86400 * 7)
+    deleted_fanned_out = State(externally_progressed=True)
 
     moved = State(try_interval=300, attempt_immediately=True)
     moved_fanned_out = State(externally_progressed=True)
@@ -75,15 +79,26 @@ class IdentityStates(StateGraph):
     moved.transitions_to(updated)
     moved_fanned_out.transitions_to(updated)
 
+    outdated.transitions_to(connection_issue)
+    outdated.times_out_to(connection_issue, 60 * 60 * 24 * 14)
+
     @classmethod
     def group_deleted(cls):
         return [cls.deleted, cls.deleted_fanned_out]
 
     @classmethod
-    def targets_fan_out(cls, identity: "Identity", type_: str) -> None:
+    def targets_fan_out(cls, identity: "Identity", type_: str, broadcast=False) -> None:
         from activities.models import FanOut
         from users.models import Follow
 
+        if broadcast:
+            for target in Identity.objects.filter(
+                local=False, shared_inbox_uri__isnull=False
+            ).distinct("shared_inbox_uri"):
+                FanOut.objects.create(
+                    identity=target, type=type_, subject_identity=identity
+                )
+            return
         # Fan out to each target
         shared_inboxes = set()
         for follower in Follow.objects.select_related("source", "target").filter(
@@ -168,7 +183,7 @@ class IdentityStates(StateGraph):
             instance.interactions, PostInteractionStates.undone
         )
         # Fanout the deletion and unfollow from both directions
-        cls.targets_fan_out(instance, FanOut.Types.identity_deleted)
+        cls.targets_fan_out(instance, FanOut.Types.identity_deleted, broadcast=True)
         for follower in Follow.objects.filter(target=instance):
             follower.transition_perform(FollowStates.rejecting)
         for following in Follow.objects.filter(source=instance):
@@ -183,7 +198,11 @@ class IdentityStates(StateGraph):
             identity.calculate_stats()
             return cls.updated
         # Run the actor fetch and progress to updated if it succeeds
-        if identity.fetch_actor():
+        if (
+            identity.domain
+            and identity.domain.state != DomainStates.connection_issue
+            and identity.fetch_actor()
+        ):
             return cls.updated
 
     @classmethod
@@ -364,7 +383,7 @@ class Identity(StatorModel):
                 remote_url=self.icon_uri,
             )
         else:
-            return StaticAbsoluteUrl("img/unknown-icon-128.png")
+            return AutoAbsoluteUrl("/s/img/avatar.svg")
 
     def local_image_url(self) -> RelativeAbsoluteUrl | None:
         """
@@ -649,7 +668,7 @@ class Identity(StatorModel):
         self.ensure_uris()
         response = {
             "id": self.actor_uri,
-            "type": self.actor_type.title(),
+            "type": "Tombstone" if self.deleted else self.actor_type.title(),
             "inbox": self.inbox_uri,
             "outbox": self.outbox_uri,
             "featured": self.featured_collection_uri,
@@ -676,6 +695,12 @@ class Identity(StatorModel):
                 "type": "Image",
                 "mediaType": media_type_from_filename(self.icon.name),
                 "url": self.icon.url,
+            }
+        elif self.icon_uri:
+            response["icon"] = {
+                "type": "Image",
+                "mediaType": media_type_from_filename(self.icon_uri),
+                "url": self.icon_uri,
             }
         if self.image:
             response["image"] = {
@@ -800,6 +825,8 @@ class Identity(StatorModel):
         """
         from api.models import Authorization, Token
 
+        if settings.SETUP.ENVIRONMENT == "production":
+            raise ValueError("Deleting identity is only available in NeoDB")
         # Remove all login tokens
         Authorization.objects.filter(identity=self).delete()
         Token.objects.filter(identity=self).delete()
@@ -929,15 +956,14 @@ class Identity(StatorModel):
                 and response.status_code < 500
                 and response.status_code not in [401, 403, 404, 406, 410]
             ):
-                raise ValueError(
-                    f"Client error fetching featured collection: {response.status_code}",
-                    response.content,
+                logger.warning(
+                    f"Error fetching collection {uri} {response.status_code}"
                 )
             return 0, []
 
         try:
             json_data = json_from_response(response)
-            data = canonicalise(json_data, include_security=True)
+            data = canonicalise(json_data, include_security=True, outbound=False)
             total = data.get("totalItems", 0)
             # canonicalise seems to turn single-item `items` list into a dict?? gross
             if value := data.get("orderedItems"):
@@ -948,13 +974,10 @@ class Identity(StatorModel):
                 items = []
             return total, items
         except ValueError:
-            # Some servers return these with a 200 status code!
-            if b"not found" in response.content.lower():
-                return 0, []
-            raise ValueError(
-                "JSON parse error fetching collection",
-                response.content,
+            logger.info(
+                f"JSON parse error fetching collection {uri} {response.content}"
             )
+            return 0, []
 
     @classmethod
     def fetch_pinned_post_uris(cls, client: httpx.Client, uri: str) -> list[str]:
@@ -994,6 +1017,8 @@ class Identity(StatorModel):
 
         if self.local:
             raise ValueError("Cannot fetch local identities")
+        if (self.actor_uri or "").lower().split(":")[0] not in ["http", "https"]:
+            return False
         try:
             response = SystemActor().signed_request(
                 method="get",
@@ -1022,7 +1047,7 @@ class Identity(StatorModel):
         try:
             json_data = json_from_response(response)
             document = canonicalise(json_data, include_security=True)
-        except ValueError:
+        except (ValueError, JsonLdError):
             # servers with empty or invalid responses are inevitable
             logger.info(
                 "Invalid response fetching actor %s",
@@ -1034,6 +1059,7 @@ class Identity(StatorModel):
             return False
         if "type" not in document:
             return False
+        _neodb_sync = self.username != document.get("preferredUsername")
         self.name = document.get("name")
         self.profile_uri = document.get("url")
         self.inbox_uri = document.get("inbox")
@@ -1065,7 +1091,7 @@ class Identity(StatorModel):
         self.aliases = document.get("alsoKnownAs")
         for attachment in get_list(document, "attachment"):
             if (
-                attachment["type"] == "PropertyValue"
+                attachment.get("type") == "PropertyValue"
                 and "name" in attachment
                 and "value" in attachment
             ):
@@ -1102,7 +1128,10 @@ class Identity(StatorModel):
         # Emojis (we need the domain so we do them here)
         for tag in get_list(document, "tag"):
             if tag["type"].lower() in ["toot:emoji", "emoji"]:
-                Emoji.by_ap_tag(self.domain, tag, create=True)
+                try:
+                    Emoji.by_ap_tag(self.domain, tag, create=True)
+                except (KeyError, ValueError):
+                    pass
         # Mark as fetched
         self.fetched = timezone.now()
         # Update the post stats
@@ -1133,6 +1162,8 @@ class Identity(StatorModel):
             }
         )
 
+        if _neodb_sync:
+            settings.NEODB_MQ.enqueue("takahe.ap_handlers.identity_fetched", self.id)
         return True
 
     ### OpenGraph API ###
@@ -1275,3 +1306,9 @@ class Identity(StatorModel):
     @cached_property
     def config_identity(self) -> Config.IdentityOptions:
         return Config.load_identity(self)
+
+
+@receiver(post_save, sender=Identity)
+def _neodb_identity_handler(sender, instance: Identity, created: bool, **kwargs):
+    if created and not instance.local and instance.username:
+        settings.NEODB_MQ.enqueue("takahe.ap_handlers.identity_fetched", instance.id)

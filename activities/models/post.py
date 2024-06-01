@@ -3,6 +3,7 @@ import html
 import json
 import logging
 import mimetypes
+import re
 import ssl
 from collections.abc import Iterable
 from typing import Optional
@@ -10,6 +11,7 @@ from urllib.parse import urlparse
 
 import httpx
 import urlman
+from deepmerge import always_merger
 from django.conf import settings
 from django.contrib.postgres.indexes import GinIndex
 from django.contrib.postgres.search import SearchVector
@@ -116,7 +118,7 @@ class PostStates(StateGraph):
         # Only fan out if the post was published in the last day or it's local
         # (we don't want to fan out anything older that that which is remote)
         if instance.local or (timezone.now() - instance.published) < datetime.timedelta(
-            days=1
+            days=settings.FANOUT_LIMIT_DAYS
         ):
             cls.targets_fan_out(instance, FanOut.Types.post)
         instance.ensure_hashtags()
@@ -147,9 +149,27 @@ class PostStates(StateGraph):
     @classmethod
     def handle_deleted(cls, instance: "Post"):
         """
-        Creates all needed fan-out objects needed to delete a Post.
+        When a post is deleted:
+        - Remove all timeline events
+        - Remove all bookmarks
+        - Undo all interactions (so that remote follower of a local booster will unsee it from their timeline)
+        - Fan out the deletion of local post (fanout of remote post deletion is not supported yet)
         """
-        cls.targets_fan_out(instance, FanOut.Types.post_deleted)
+        from users.models import Bookmark
+        from .post_interaction import PostInteraction, PostInteractionStates
+        from .timeline_event import TimelineEvent
+
+        TimelineEvent.objects.filter(subject_post=instance).delete()
+        Bookmark.objects.filter(post=instance).delete()
+        if instance.local:
+            cls.targets_fan_out(instance, FanOut.Types.post_deleted)
+        PostInteraction.transition_perform_queryset(
+            PostInteraction.objects.filter(
+                post=instance,
+                state__in=PostInteractionStates.group_active(),
+            ),
+            PostInteractionStates.undone,
+        )
         return cls.deleted_fanned_out
 
     @classmethod
@@ -505,7 +525,7 @@ class Post(StatorModel):
         """
         if not self.summary:
             return ""
-        return "summary-{self.id}"
+        return f"summary-{self.id}"
 
     def content_preview(self, length=80):
         preview = html.unescape(strip_tags(self.content))[: length + 1]
@@ -525,6 +545,14 @@ class Post(StatorModel):
         }
 
     ### Local creation/editing ###
+    def neodb_sync_local(
+        self: "Post", reply_to: "Post | None", content: str, create: bool
+    ):
+        if create:
+            func = "takahe.ap_handlers.post_created"
+        else:
+            func = "takahe.ap_handlers.post_edited"
+        settings.NEODB_MQ.enqueue(func, self.pk, {"raw_content": content})
 
     @classmethod
     def create_local(
@@ -551,7 +579,6 @@ class Post(StatorModel):
             emojis = Emoji.emojis_from_content(content, None)
             # Strip all unwanted HTML and apply linebreaks filter, grabbing hashtags on the way
             parser = FediverseHtmlParser(linebreaks_filter(content), find_hashtags=True)
-            content = parser.html
             hashtags = (
                 sorted([tag[: Hashtag.MAXIMUM_LENGTH] for tag in parser.hashtags])
                 or None
@@ -562,7 +589,7 @@ class Post(StatorModel):
             # Make the Post object
             post = cls.objects.create(
                 author=author,
-                content=content,
+                content=parser.html,
                 summary=summary or None,
                 sensitive=bool(summary) or sensitive,
                 local=True,
@@ -584,6 +611,7 @@ class Post(StatorModel):
             # Recalculate parent stats for replies
             if reply_to:
                 reply_to.calculate_stats()
+        post.neodb_sync_local(reply_to, content, True)
         return post
 
     def edit_local(
@@ -626,6 +654,7 @@ class Post(StatorModel):
                 attachment.save()
 
             self.transition_perform(PostStates.edited)
+        self.neodb_sync_local(self.in_reply_to_post(), content, False)
 
     @classmethod
     def mentions_from_content(cls, content, author) -> set[Identity]:
@@ -775,6 +804,8 @@ class Post(StatorModel):
         for field in ["to", "cc", "tag", "attachment"]:
             if not value[field]:
                 del value[field]
+        if isinstance(self.type_data, dict) and "object" in self.type_data:
+            always_merger.merge(value, self.type_data["object"])
         return value
 
     def to_create_ap(self):
@@ -960,6 +991,8 @@ class Post(StatorModel):
             post.url = data.get("url", data["id"])
             if post.type in (cls.Types.article, cls.Types.question):
                 post.type_data = PostTypeData(root=data).root
+            if "relatedWith" in data:
+                post.type_data = {"object": data}
             try:
                 # apparently sometimes posts (Pages?) in the fediverse
                 # don't have content, but this shouldn't be a total failure
@@ -972,6 +1005,11 @@ class Post(StatorModel):
             if not post.content and post.summary:
                 post.content = post.summary
                 post.summary = None
+            post.content = re.sub(
+                r'href="(https?://[^/"]+)/~neodb~(/[^"]+)"',
+                'href="https://' + settings.SETUP.MAIN_DOMAIN + r'/search?r=1&q=\1\2"',
+                post.content,
+            )
             post.sensitive = data.get("sensitive", False)
             post.published = parse_ld_date(data.get("published"))
             post.edited = parse_ld_date(data.get("updated"))
@@ -994,8 +1032,11 @@ class Post(StatorModel):
                         name.lower().lstrip("#")[: Hashtag.MAXIMUM_LENGTH]
                     )
                 elif tag_type in ["toot:emoji", "emoji"]:
-                    emoji = Emoji.by_ap_tag(post.author.domain, tag, create=True)
-                    post.emojis.add(emoji)
+                    try:
+                        emoji = Emoji.by_ap_tag(post.author.domain, tag, create=True)
+                        post.emojis.add(emoji)
+                    except (KeyError, ValueError):
+                        pass
                 else:
                     # Various ActivityPub implementations and proposals introduced tag
                     # types, e.g. Edition in Bookwyrm and Link in fep-e232 Object Links
@@ -1069,6 +1110,10 @@ class Post(StatorModel):
                         )
                 else:
                     parent.calculate_stats()
+            if "relatedWith" in data:
+                settings.NEODB_MQ.enqueue(
+                    "takahe.ap_handlers.post_fetched", post.pk, data
+                )
         return post
 
     @classmethod
@@ -1099,7 +1144,7 @@ class Post(StatorModel):
                 try:
                     json_data = json_from_response(response)
                     post = cls.by_ap(
-                        canonicalise(json_data, include_security=True),
+                        canonicalise(json_data, include_security=True, outbound=False),
                         create=True,
                         update=True,
                         fetch_author=True,
@@ -1182,6 +1227,17 @@ class Post(StatorModel):
             # Ensure the actor on the request authored the post
             if not post.author.actor_uri == data["actor"]:
                 raise ValueError("Actor on delete does not match object")
+            if (
+                post.type_data
+                and "object" in post.type_data
+                and "relatedWith" in post.type_data.get("object", {})
+            ):
+                settings.NEODB_MQ.enqueue(
+                    "takahe.ap_handlers.post_deleted",
+                    post.pk,
+                    False,
+                    post.type_data["object"],
+                )
             post.delete()
 
     @classmethod

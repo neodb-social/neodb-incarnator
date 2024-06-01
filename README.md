@@ -1,3 +1,7 @@
+***🧩 this repository is part of (and does not work without) [NeoDB](https://neodb.net), please refer to Takahē or Incarnator for a standalone Fediverse micro-blogging server.***
+
+---
+
 Incarnator is a fork of [Takahē](https://github.com/jointakahe/takahe), a fediverse
 server for microblogging. You can read more about Takahē from
 [the website](https://jointakahe.org/), or check the original

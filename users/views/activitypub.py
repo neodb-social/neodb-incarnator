@@ -20,7 +20,7 @@ from core.signatures import (
     VerificationFormatError,
 )
 from core.views import StaticContentView
-from takahe import __version__
+from takahe.neodb import __version__ as __neodb_version__
 from users.models import Identity, InboxMessage, SystemActor
 from users.models.domain import Domain
 from users.shortcuts import by_handle_or_404
@@ -90,8 +90,8 @@ class NodeInfo2(View):
         return JsonResponse(
             {
                 "version": "2.0",
-                "software": {"name": "takahe", "version": __version__},
-                "protocols": ["activitypub"],
+                "software": {"name": "neodb", "version": __neodb_version__},
+                "protocols": ["activitypub", "neodb"],
                 "services": {"outbound": [], "inbound": []},
                 "usage": {
                     "users": {"total": local_identities},
@@ -137,7 +137,9 @@ class Inbox(View):
         if len(request.body) > settings.JSONLD_MAX_SIZE:
             return HttpResponseBadRequest("Payload size too large")
         # Load the LD
-        document = canonicalise(json.loads(request.body), include_security=True)
+        document = canonicalise(
+            json.loads(request.body), include_security=True, outbound=False
+        )
         document_type = document["type"]
         document_subtype = None
         if isinstance(document.get("object"), dict):

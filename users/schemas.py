@@ -26,4 +26,4 @@ class NodeInfo(BaseModel):
     protocols: list[str] | None = None
     open_registrations: bool = Field(alias="openRegistrations")
     usage: NodeInfoUsage
-    metadata: dict[str, Any] | None = None
+    metadata: dict[str, Any] | list | None = None

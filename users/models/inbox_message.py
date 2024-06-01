@@ -150,6 +150,13 @@ class InboxMessageStates(StateGraph):
                     Report.handle_ap(instance.message)
                 case "__internal__":
                     match instance.message_object_type:
+                        case "fetchidentity":
+                            try:
+                                Identity.by_handle(
+                                    instance.message["object"]["handle"], fetch=True
+                                )
+                            except Exception as e:
+                                print(e)
                         case "fetchpost":
                             Post.handle_fetch_internal(instance.message["object"])
                         case "cleartimeline":

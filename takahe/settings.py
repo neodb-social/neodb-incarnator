@@ -18,8 +18,11 @@ from pydantic import (
 )
 from pydantic_core import Url
 from pydantic_settings import BaseSettings, SettingsConfigDict
+from redis import Redis
+from rq import Queue
 
 from takahe import __version__
+from takahe.neodb import __version__ as __neodb_version__
 
 BASE_DIR = Path(__file__).resolve().parent.parent
 
@@ -177,6 +180,9 @@ class Settings(BaseSettings):
     # our database if nobody local has interacted with them.
     # Set to zero to disable.
     REMOTE_PRUNE_HORIZON: int = 90
+
+    # Remote posts older than this will not be pushed to timeline.
+    FANOUT_LIMIT_DAYS: int = 9
 
     # Stator tuning
     STATOR_CONCURRENCY: int = 20
@@ -482,9 +488,15 @@ if SETUP.ERROR_EMAILS:
 
 TAKAHE_USER_AGENT = (
     f"python-httpx/{httpx.__version__} "
-    f"(Takahe/{__version__}; +https://{SETUP.MAIN_DOMAIN}/)"
+    f"(neodb/{__neodb_version__}; Takahe/{__version__}; +https://{SETUP.MAIN_DOMAIN}/)"
 )
+
+FANOUT_LIMIT_DAYS = SETUP.FANOUT_LIMIT_DAYS
 
 if SETUP.LOCAL_SETTINGS:
     # Let any errors bubble up
     from .local_settings import *  # noqa
+
+NEODB_MQ = Queue(
+    "ap", connection=Redis.from_url(str(SETUP.CACHES_DEFAULT or "redis://localhost"))
+)

@@ -6,6 +6,7 @@ from django.contrib.syndication.views import Feed
 from django.core import validators
 from django.http import Http404, JsonResponse
 from django.shortcuts import redirect
+from django.utils import timezone as tz
 from django.utils.decorators import method_decorator
 from django.utils.feedgenerator import Rss201rev2Feed
 from django.utils.xmlutils import SimplerXMLGenerator
@@ -56,6 +57,10 @@ class ViewIdentity(ListView):
         if request.ap_json:
             # Return actor info
             return self.serve_actor(self.identity)
+        elif self.identity.deleted:
+            raise Http404("Deleted identity")
+        elif self.identity.local and self.identity.profile_uri:
+            return redirect(self.identity.profile_uri)
         else:
             # Show normal page
             return super().get(request, identity=self.identity)
@@ -64,10 +69,13 @@ class ViewIdentity(ListView):
         # If this not a local actor, redirect to their canonical URI
         if not identity.local:
             return redirect(identity.actor_uri)
-        return JsonResponse(
+        r = JsonResponse(
             canonicalise(identity.to_ap(), include_security=True),
             content_type="application/activity+json",
         )
+        if identity.deleted and tz.now() - identity.deleted > tz.timedelta(days=3):
+            r.status_code = 410
+        return r
 
     def get_queryset(self):
         return TimelineService(None).identity_public(
