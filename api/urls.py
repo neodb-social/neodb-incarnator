@@ -180,6 +180,7 @@ urlpatterns = [
     path("v1/conversations", timelines.conversations),
     path("v1/favourites", timelines.favourites),
     # Trends
+    path("v1/trends", trends.trends_tags),
     path("v1/trends/tags", trends.trends_tags),
     path("v1/trends/statuses", trends.trends_statuses),
     path("v1/trends/links", trends.trends_links),
