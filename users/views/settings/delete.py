@@ -23,9 +23,9 @@ class DeleteIdentity(IdentityViewMixin, FormView):
             return value
 
     def form_valid(self, form):
-        self.identity.mark_deleted()
-        messages.success(
-            self.request,
-            f"The identity {self.identity.handle} is now being deleted.",
-        )
+        # self.identity.mark_deleted()
+        # messages.success(
+        #     self.request,
+        #     f"The identity {self.identity.handle} is now being deleted.",
+        # )
         return redirect("/")

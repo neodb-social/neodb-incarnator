@@ -1,17 +1,5 @@
 <nav>
     <h3>Account</h3>
-    <a href="{% url "settings_security" %}" {% if section == "security" %}class="selected"{% endif %} title="Login &amp; Security">
-        <i class="fa-solid fa-key"></i>
-        <span>Login &amp; Security</span>
-    </a>
-    <a href="{% url "settings_interface" %}" {% if section == "interface" %}class="selected"{% endif %} title="Interface">
-        <i class="fa-solid fa-display"></i>
-        <span>Interface</span>
-    </a>
-    <a href="{% url "identity_create" %}" {% if section == "create" %}class="selected"{% endif %} title="Create a new identity">
-        <i class="fa-solid fa-plus"></i>
-        Create a new identity
-    </a>
     <a href="{% url "logout" %}">
         <i class="fa-solid fa-right-from-bracket" title="Logout"></i>
         <span>Logout</span>
@@ -44,10 +32,6 @@
             <a href="{% url "settings_tokens" handle=identity.handle %}" {% if section == "tokens" %}class="selected"{% endif %} title="Authorized Apps">
                 <i class="fa-solid fa-window-restore"></i>
                 <span>Authorized Apps</span>
-            </a>
-            <a href="{% url "settings_delete" handle=identity.handle %}" {% if section == "delete" %}class="selected"{% endif %} title="Delete Identity">
-                <i class="fa-solid fa-user-slash"></i>
-                <span>Delete Identity</span>
             </a>
             <hr>
             <h3>Tools</h3>
