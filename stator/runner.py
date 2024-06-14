@@ -167,7 +167,7 @@ class StatorRunner:
             for model in self.models:
                 with sentry.start_span(description=model._meta.label_lower):
                     num = self.handled.get(model._meta.label_lower, 0)
-                    if num or settings.DEBUG:
+                    if num:
                         logger.info(
                             f"{model._meta.label_lower}: Scheduling ({num} handled)"
                         )
@@ -227,9 +227,9 @@ class StatorRunner:
                 if call_inline:
                     task_deletion(model, in_thread=False)
                 else:
-                    self.tasks[model._meta.label_lower, "__delete__"] = (
-                        self.executor.submit(task_deletion, model)
-                    )
+                    self.tasks[
+                        model._meta.label_lower, "__delete__"
+                    ] = (self.executor.submit(task_deletion, model))
 
     def clean_tasks(self):
         """

@@ -1,6 +1,7 @@
 import logging
 from datetime import timedelta
 
+from django.conf import settings
 from django.db.models import OuterRef
 from django.db.models.expressions import F
 
@@ -160,6 +161,16 @@ class PostService:
             ),
             PostInteractionStates.undone,
         )
+        if (
+            self.post.type_data
+            and "object" in self.post.type_data
+            and "relatedWith" in self.post.type_data.get("object", {})
+        ):
+            settings.NEODB_MQ.enqueue(
+                "takahe.ap_handlers.post_deleted",
+                self.post.pk,
+                self.post.type_data["object"],
+            )
 
     def pin_as(self, identity: Identity):
         if identity != self.post.author:

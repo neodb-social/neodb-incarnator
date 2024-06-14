@@ -47,6 +47,7 @@ from core.ld import (
 from core.snowflake import Snowflake
 from stator.exceptions import TryAgainLater
 from stator.models import State, StateField, StateGraph, StatorModel
+
 from users.models.follow import FollowStates
 from users.models.hashtags import HashtagFollow
 from users.models.identity import Identity, IdentityStates
@@ -527,6 +528,32 @@ class Post(StatorModel):
         }
 
     ### Local creation/editing ###
+    def neodb_sync_local(
+        self: "Post", reply_to: "Post | None", content: str, create: bool
+    ):
+        if (
+            reply_to
+            and reply_to.type_data
+            and reply_to.author == self.author
+            and "object" in reply_to.type_data
+            and "relatedWith" in reply_to.type_data["object"]
+        ):
+            tag = reply_to.type_data["object"]["tag"]
+        elif (
+            not create
+            and self.type_data
+            and "object" in self.type_data
+            and "relatedWith" in self.type_data["object"]
+        ):
+            tag = self.type_data["object"]["tag"]
+        else:
+            return
+        if create:
+            func = "takahe.ap_handlers.post_created"
+        else:
+            func = "takahe.ap_handlers.post_edited"
+        obj = {"tag": tag, "relatedWith": [{"content": content, "type": "Note"}]}
+        settings.NEODB_MQ.enqueue(func, self.pk, obj)
 
     @classmethod
     def create_local(
@@ -553,7 +580,6 @@ class Post(StatorModel):
             emojis = Emoji.emojis_from_content(content, None)
             # Strip all unwanted HTML and apply linebreaks filter, grabbing hashtags on the way
             parser = FediverseHtmlParser(linebreaks_filter(content), find_hashtags=True)
-            content = parser.html
             hashtags = (
                 sorted([tag[: Hashtag.MAXIMUM_LENGTH] for tag in parser.hashtags])
                 or None
@@ -564,7 +590,7 @@ class Post(StatorModel):
             # Make the Post object
             post = cls.objects.create(
                 author=author,
-                content=content,
+                content=parser.html,
                 summary=summary or None,
                 sensitive=bool(summary) or sensitive,
                 local=True,
@@ -586,6 +612,7 @@ class Post(StatorModel):
             # Recalculate parent stats for replies
             if reply_to:
                 reply_to.calculate_stats()
+        post.neodb_sync_local(reply_to, content, True)
         return post
 
     def edit_local(
@@ -628,6 +655,7 @@ class Post(StatorModel):
                 attachment.save()
 
             self.transition_perform(PostStates.edited)
+        self.neodb_sync_local(self.in_reply_to_post(), content, False)
 
     @classmethod
     def mentions_from_content(cls, content, author) -> set[Identity]:

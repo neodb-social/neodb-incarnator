@@ -135,7 +135,11 @@ def edit_status(request, id: str, details: EditStatusSchema) -> schemas.Status:
     post = post_for_id(request, id)
     if post.author != request.identity:
         raise ApiError(401, "Not the author of this status")
-    if post.type_data and post.type_data.get("object", {}).get("relatedWith"):
+    if (
+        post.type_data
+        and post.in_reply_to is None
+        and post.type_data.get("object", {}).get("relatedWith")
+    ):
         raise ApiError(422, "This post must be edited in NeoDB")
     # Grab attachments
     attachments = [get_object_or_404(PostAttachment, pk=id) for id in details.media_ids]
@@ -191,6 +195,13 @@ def status_context(request, id: str) -> schemas.Context:
             for p in descendants
         ],
     )
+
+
+@scope_required("read:statuses")
+@api_view.get
+def status_history(request, id: str) -> list:
+    # not implemented yet
+    return []
 
 
 @scope_required("write:favourites")

@@ -148,6 +148,7 @@ urlpatterns = [
     # Statuses
     path("v1/statuses", statuses.post_status),
     path("v1/statuses/<id>/context", statuses.status_context),
+    path("v1/statuses/<id>/history", statuses.status_history),
     path("v1/statuses/<id>/favourite", statuses.favourite_status),
     path("v1/statuses/<id>/unfavourite", statuses.unfavourite_status),
     path("v1/statuses/<id>/favourited_by", statuses.favourited_by),
