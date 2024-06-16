@@ -152,6 +152,19 @@ class PostStates(StateGraph):
         """
         Creates all needed fan-out objects needed to delete a Post.
         """
+        from users.models import Bookmark
+        from .post_interaction import PostInteraction, PostInteractionStates
+        from .timeline_event import TimelineEvent
+
+        PostInteraction.transition_perform_queryset(
+            PostInteraction.objects.filter(
+                post=instance,
+                state__in=PostInteractionStates.group_active(),
+            ),
+            PostInteractionStates.undone,
+        )
+        TimelineEvent.objects.filter(subject_post=instance).delete()
+        Bookmark.objects.filter(post=instance).delete()
         cls.targets_fan_out(instance, FanOut.Types.post_deleted)
         return cls.deleted_fanned_out
 
