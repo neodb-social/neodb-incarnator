@@ -50,8 +50,10 @@ def trends_statuses(
             .values_list("id", flat=True)[:100]
         )
         cache.set("trends_statuses", popular_post_ids, 3600)
-    posts = Post.objects.not_hidden().filter(
-        id__in=popular_post_ids[offset : offset + limit]
+    posts = (
+        Post.objects.not_hidden()
+        .filter(id__in=popular_post_ids[offset : offset + limit])
+        .order_by("-published")
     )
     return schemas.Status.map_from_post(list(posts), request.identity)
 
