@@ -12,7 +12,7 @@ from activities.models import (
     PostStates,
     TimelineEvent,
 )
-from users.models import Identity
+from users.models import Bookmark, Identity
 
 logger = logging.getLogger(__name__)
 
@@ -154,6 +154,7 @@ class PostService:
         """
         self.post.transition_perform(PostStates.deleted)
         TimelineEvent.objects.filter(subject_post=self.post).delete()
+        Bookmark.objects.filter(post=self.post).delete()
         PostInteraction.transition_perform_queryset(
             PostInteraction.objects.filter(
                 post=self.post,
