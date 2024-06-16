@@ -8,6 +8,7 @@ from activities.models import Hashtag, Post
 from api import schemas
 from api.decorators import scope_required
 from hatchway import api_view
+from django.core.cache import cache
 
 
 @scope_required("read")
@@ -15,16 +16,14 @@ from hatchway import api_view
 def trends_tags(
     request: HttpRequest,
     limit: int = 10,
-    offset: int | None = None,
+    offset: int = 0,
 ) -> list[schemas.Tag]:
-    if limit > 40:
-        limit = 40
-    if offset is None or offset < 0:
-        offset = 0
-    if offset + limit > 100:
-        offset = 100 - limit
+    popular_tags = cache.get("trends_tags", None)
+    if popular_tags is None:
+        popular_tags = Hashtag.popular(limit=100, offset=0)
+        cache.set("trends_tags", popular_tags, 3600)
     return schemas.Tag.map_from_hashtags(
-        Hashtag.popular(limit=limit, offset=offset),
+        popular_tags[offset : offset + limit],
         domain=request.domain,
         identity=request.identity,
     )
@@ -35,28 +34,29 @@ def trends_tags(
 def trends_statuses(
     request: HttpRequest,
     limit: int = 10,
-    offset: int | None = None,
+    offset: int = 0,
 ) -> list[schemas.Status]:
-    if limit > 40:
-        limit = 40
-    if offset is None or offset < 0:
-        offset = 0
-    if offset + limit > 100:
-        offset = 100 - limit
-    since = timezone.now().date() - timedelta(days=30)
-    posts = (
-        Post.objects.not_hidden()
-        .public()
-        .filter(published__gte=since)
-        .annotate(num_interactions=Count("interactions"))
-        .filter(num_interactions__gt=2)
-        .order_by("-num_interactions", "-published")[offset : offset + limit]
+    popular_post_ids = cache.get("trends_statuses", None)
+    if popular_post_ids is None:
+        since = timezone.now().date() - timedelta(days=7)
+        popular_post_ids = list(
+            Post.objects.not_hidden()
+            .public()
+            .filter(author__discoverable=True)
+            .filter(published__gte=since)
+            .annotate(num_interactions=Count("interactions"))
+            .filter(num_interactions__gte=1)
+            .order_by("-num_interactions", "-published")
+            .values_list("id", flat=True)[:100]
+        )
+        cache.set("trends_statuses", popular_post_ids, 3600)
+    posts = Post.objects.not_hidden().filter(
+        id__in=popular_post_ids[offset : offset + limit]
     )
     return schemas.Status.map_from_post(list(posts), request.identity)
 
 
 from hatchway import Schema, Field
-from django.core.cache import cache
 
 
 class Link(Schema):
@@ -82,13 +82,7 @@ class Link(Schema):
 def trends_links(
     request: HttpRequest,
     limit: int = 10,
-    offset: int | None = None,
+    offset: int = 0,
 ) -> list[Link]:
-    if limit > 40:
-        limit = 40
-    if offset is None or offset < 0:
-        offset = 0
-    if offset + limit > 100:
-        offset = 100 - limit
     links = cache.get("trends_links", [])
     return links[offset : offset + limit]
