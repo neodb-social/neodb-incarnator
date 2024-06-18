@@ -422,7 +422,7 @@ class PostInteraction(StatorModel):
                 else:
                     raise ValueError(f"Cannot handle AP type {data['type']}")
                 # Make the actual interaction
-                boost = cls.objects.update_or_create(
+                boost = cls.objects.create(
                     object_uri=data["id"],
                     identity=identity,
                     post=post,
