@@ -152,6 +152,17 @@ class PostStates(StateGraph):
         """
         Creates all needed fan-out objects needed to delete a Post.
         """
+        if (
+            instance.type_data
+            and "object" in instance.type_data
+            and "relatedWith" in instance.type_data.get("object", {})
+        ):
+            settings.NEODB_MQ.enqueue(
+                "takahe.ap_handlers.post_deleted",
+                instance.pk,
+                instance.type_data["object"],
+            )
+
         from users.models import Bookmark
         from .post_interaction import PostInteraction, PostInteractionStates
         from .timeline_event import TimelineEvent

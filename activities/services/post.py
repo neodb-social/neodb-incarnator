@@ -158,16 +158,6 @@ class PostService:
             type__in=[TimelineEvent.Types.post, TimelineEvent.Types.boost],
             subject_post=self.post,
         ).delete()
-        if (
-            self.post.type_data
-            and "object" in self.post.type_data
-            and "relatedWith" in self.post.type_data.get("object", {})
-        ):
-            settings.NEODB_MQ.enqueue(
-                "takahe.ap_handlers.post_deleted",
-                self.post.pk,
-                self.post.type_data["object"],
-            )
 
     def pin_as(self, identity: Identity):
         if identity != self.post.author:
