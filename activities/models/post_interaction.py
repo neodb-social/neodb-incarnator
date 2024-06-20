@@ -41,7 +41,7 @@ class PostInteractionStates(StateGraph):
             TimelineEvent.objects.create(
                 identity=instance.identity,
                 type=TimelineEvent.Types.boost,
-                subject_identity=instance.post.author,
+                subject_identity=instance.identity,
                 subject_post=instance.post,
                 subject_post_interaction=instance,
             )
