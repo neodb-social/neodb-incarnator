@@ -74,7 +74,7 @@ class TimelineService:
             .public()
             .filter(author__restriction=Identity.Restriction.none)
             .tagged_with(hashtag)
-            .order_by("-id")
+            # .order_by("-id")  # NeoDB: disabled due to performance
         )
 
     def notifications(self, types: list[str]) -> models.QuerySet[TimelineEvent]:
