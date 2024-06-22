@@ -150,7 +150,8 @@ class PostService:
 
     def delete(self):
         """
-        Marks a post as deleted and immediately cleans up author timeline events.
+        Marks a post as deleted and immediately cleans up author timeline events,
+        remaining cleanups will be done in stator.
         """
         self.post.transition_perform(PostStates.deleted)
         TimelineEvent.objects.filter(

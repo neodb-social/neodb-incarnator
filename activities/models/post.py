@@ -150,7 +150,11 @@ class PostStates(StateGraph):
     @classmethod
     def handle_deleted(cls, instance: "Post"):
         """
-        Creates all needed fan-out objects needed to delete a Post.
+        When a post is deleted:
+        - Remove all timeline events
+        - Remove all bookmarks
+        - Undo all interactions (so that remote follower of a local booster will unsee it from their timeline)
+        - Fan out the deletion of local post (fanout of remote post deletion is not supported yet)
         """
         if (
             instance.type_data
@@ -167,6 +171,10 @@ class PostStates(StateGraph):
         from .post_interaction import PostInteraction, PostInteractionStates
         from .timeline_event import TimelineEvent
 
+        TimelineEvent.objects.filter(subject_post=instance).delete()
+        Bookmark.objects.filter(post=instance).delete()
+        if instance.local:
+            cls.targets_fan_out(instance, FanOut.Types.post_deleted)
         PostInteraction.transition_perform_queryset(
             PostInteraction.objects.filter(
                 post=instance,
@@ -174,9 +182,6 @@ class PostStates(StateGraph):
             ),
             PostInteractionStates.undone,
         )
-        TimelineEvent.objects.filter(subject_post=instance).delete()
-        Bookmark.objects.filter(post=instance).delete()
-        cls.targets_fan_out(instance, FanOut.Types.post_deleted)
         return cls.deleted_fanned_out
 
     @classmethod
