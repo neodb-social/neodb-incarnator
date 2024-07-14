@@ -1053,7 +1053,7 @@ class Identity(StatorModel):
         self.metadata = []
         for attachment in get_list(document, "attachment"):
             if (
-                attachment["type"] == "PropertyValue"
+                attachment.get("type") == "PropertyValue"
                 and "name" in attachment
                 and "value" in attachment
             ):
