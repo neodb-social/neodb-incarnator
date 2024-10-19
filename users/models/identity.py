@@ -13,6 +13,7 @@ from django.db.models.signals import post_save
 from django.dispatch import receiver
 from django.utils import timezone
 from lxml import etree
+from pyld.jsonld import JsonLdError
 
 from api.models.push import PushSubscription, PushType
 from core.exceptions import ActorMismatchError
@@ -1010,7 +1011,7 @@ class Identity(StatorModel):
         try:
             json_data = json_from_response(response)
             document = canonicalise(json_data, include_security=True)
-        except ValueError:
+        except (ValueError, JsonLdError):
             # servers with empty or invalid responses are inevitable
             logger.info(
                 "Invalid response fetching actor %s",
