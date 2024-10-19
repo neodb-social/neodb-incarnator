@@ -983,6 +983,8 @@ class Identity(StatorModel):
 
         if self.local:
             raise ValueError("Cannot fetch local identities")
+        if (self.actor_uri or "").lower().split(":")[0] not in ["http", "https"]:
+            return False
         try:
             response = SystemActor().signed_request(
                 method="get",
