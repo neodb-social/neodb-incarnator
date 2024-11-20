@@ -921,10 +921,7 @@ class Identity(StatorModel):
                 and response.status_code < 500
                 and response.status_code not in [401, 403, 404, 406, 410]
             ):
-                raise ValueError(
-                    f"Client error fetching featured collection: {response.status_code}",
-                    response.content,
-                )
+                logger.warning(f"Error fetching collection {uri} {response.status_code}")
             return 0, []
 
         try:
