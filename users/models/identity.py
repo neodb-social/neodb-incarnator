@@ -1093,7 +1093,10 @@ class Identity(StatorModel):
         # Emojis (we need the domain so we do them here)
         for tag in get_list(document, "tag"):
             if tag["type"].lower() in ["toot:emoji", "emoji"]:
-                Emoji.by_ap_tag(self.domain, tag, create=True)
+                try:
+                    Emoji.by_ap_tag(self.domain, tag, create=True)
+                except ValueError:
+                    pass
         # Mark as fetched
         self.fetched = timezone.now()
         # Update the post stats

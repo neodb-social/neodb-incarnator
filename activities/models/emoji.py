@@ -279,12 +279,12 @@ class Emoji(StatorModel):
     def by_ap_tag(cls, domain: Domain, data: dict, create: bool = False):
         """ """
         if not data.get('id'):
-            raise KeyError("No id in emoji data")
+            raise ValueError("No id in emoji JSON")
         try:
             return cls.objects.get(object_uri=data["id"])
         except cls.DoesNotExist:
             if not create:
-                raise KeyError(f"No emoji with ID {data['id']}", data)
+                raise ValueError(f"No emoji with ID {data['id']}")
 
         # Name could be a direct property, or in a language'd value
         if "name" in data:

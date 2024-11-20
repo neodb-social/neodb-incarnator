@@ -1062,8 +1062,11 @@ class Post(StatorModel):
                         name.lower().lstrip("#")[: Hashtag.MAXIMUM_LENGTH]
                     )
                 elif tag_type in ["toot:emoji", "emoji"]:
-                    emoji = Emoji.by_ap_tag(post.author.domain, tag, create=True)
-                    post.emojis.add(emoji)
+                    try:
+                        emoji = Emoji.by_ap_tag(post.author.domain, tag, create=True)
+                        post.emojis.add(emoji)
+                    except ValueError:
+                        pass
                 else:
                     # Various ActivityPub implementations and proposals introduced tag
                     # types, e.g. Edition in Bookwyrm and Link in fep-e232 Object Links
