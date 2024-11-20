@@ -30,8 +30,10 @@ from users.models import Domain
 class EmojiStates(StateGraph):
     outdated = State(try_interval=300, force_initial=True)
     updated = State()
-
+    error = State(externally_progressed=True)
+    error.transitions_to(outdated)
     outdated.transitions_to(updated)
+    outdated.times_out_to(error, 3600 * 24 * 7)
 
     @classmethod
     def handle_outdated(cls, instance: "Emoji"):
@@ -48,13 +50,17 @@ class EmojiStates(StateGraph):
             except httpx.RequestError:
                 return
 
-            if file:
+            if not file:
+                return
+            try:
                 if mimetype == "application/octet-stream":
                     mimetype = Image.open(file).get_format_mimetype()
 
                 instance.file = file
                 instance.mimetype = mimetype
                 instance.save()
+            except Exception:
+                return
 
         return cls.updated
 
@@ -272,6 +278,8 @@ class Emoji(StatorModel):
     @classmethod
     def by_ap_tag(cls, domain: Domain, data: dict, create: bool = False):
         """ """
+        if not data.get('id'):
+            raise KeyError("No id in emoji data")
         try:
             return cls.objects.get(object_uri=data["id"])
         except cls.DoesNotExist:
