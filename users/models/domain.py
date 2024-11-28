@@ -208,7 +208,7 @@ class Domain(StatorModel):
                 )
             except httpx.HTTPError:
                 pass
-            except (ssl.SSLCertVerificationError, ssl.SSLError):
+            except (ssl.SSLCertVerificationError, ssl.SSLError, UnicodeDecodeError):
                 return None
             else:
                 try:
@@ -229,7 +229,11 @@ class Domain(StatorModel):
                     headers={"Accept": "application/json"},
                 )
                 response.raise_for_status()
-            except (httpx.HTTPError, ssl.SSLCertVerificationError) as ex:
+            except (
+                httpx.HTTPError,
+                ssl.SSLCertVerificationError,
+                UnicodeDecodeError,
+            ) as ex:
                 response = getattr(ex, "response", None)
                 if (
                     response
@@ -250,7 +254,11 @@ class Domain(StatorModel):
 
             try:
                 info = NodeInfo(**response.json())
-            except (json.JSONDecodeError, pydantic.ValidationError) as ex:
+            except (
+                json.JSONDecodeError,
+                pydantic.ValidationError,
+                UnicodeDecodeError,
+            ) as ex:
                 logger.warning(
                     "Client error decoding nodeinfo: %s %s",
                     nodeinfo20_url,
