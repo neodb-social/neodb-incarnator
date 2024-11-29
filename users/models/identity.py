@@ -38,7 +38,7 @@ from core.uris import (
 )
 from stator.exceptions import TryAgainLater
 from stator.models import State, StateField, StateGraph, StatorModel
-from users.models.domain import Domain
+from users.models.domain import Domain, DomainStates
 from users.models.inbox_message import InboxMessage
 from users.models.system_actor import SystemActor
 
@@ -56,6 +56,7 @@ class IdentityStates(StateGraph):
 
     outdated = State(try_interval=3600, force_initial=True)
     updated = State(try_interval=86400 * 7, attempt_immediately=False)
+    connection_issue = State(externally_progressed=True)
 
     edited = State(try_interval=300, attempt_immediately=True)
     deleted = State(try_interval=300, attempt_immediately=True)
@@ -75,6 +76,9 @@ class IdentityStates(StateGraph):
 
     updated.transitions_to(moved)
     moved.transitions_to(moved_fanned_out)
+
+    outdated.transitions_to(connection_issue)
+    outdated.times_out_to(connection_issue, 60 * 60 * 24 * 14)
 
     @classmethod
     def group_deleted(cls):
@@ -192,7 +196,11 @@ class IdentityStates(StateGraph):
             identity.calculate_stats()
             return cls.updated
         # Run the actor fetch and progress to updated if it succeeds
-        if identity.fetch_actor():
+        if (
+            identity.domain
+            and identity.domain.state != DomainStates.connection_issue
+            and identity.fetch_actor()
+        ):
             return cls.updated
 
     @classmethod
@@ -921,7 +929,9 @@ class Identity(StatorModel):
                 and response.status_code < 500
                 and response.status_code not in [401, 403, 404, 406, 410]
             ):
-                logger.warning(f"Error fetching collection {uri} {response.status_code}")
+                logger.warning(
+                    f"Error fetching collection {uri} {response.status_code}"
+                )
             return 0, []
 
         try:
