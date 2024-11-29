@@ -14,7 +14,7 @@ from django.db import models
 
 from core.models import Config
 from stator.models import State, StateField, StateGraph, StatorModel
-from users.schemas import NodeInfo
+from users.schemas import NodeInfo, NodeInfoSoftware, NodeInfoUsage
 
 logger = logging.getLogger(__name__)
 
@@ -194,6 +194,17 @@ class Domain(StatorModel):
         """
         Fetch the /NodeInfo/2.0 for the domain
         """
+        if self.domain == "threads.net":
+            # too bad Meta don't implement node info
+            return NodeInfo(
+                version="2.0",
+                software=NodeInfoSoftware(name="threads.net"),
+                protocols=["activitypub"],
+                openRegistrations=True,
+                usage=NodeInfoUsage(),
+                metadata={},
+            )
+
         nodeinfo20_url = f"https://{self.domain}/nodeinfo/2.0"
 
         with httpx.Client(
