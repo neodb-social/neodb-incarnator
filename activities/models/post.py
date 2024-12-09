@@ -537,7 +537,7 @@ class Post(StatorModel):
         """
         if not self.summary:
             return ""
-        return "summary-{self.id}"
+        return f"summary-{self.id}"
 
     def content_preview(self, length=80):
         preview = html.unescape(strip_tags(self.content))[: length + 1]
