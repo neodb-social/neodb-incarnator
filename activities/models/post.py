@@ -156,17 +156,12 @@ class PostStates(StateGraph):
         - Undo all interactions (so that remote follower of a local booster will unsee it from their timeline)
         - Fan out the deletion of local post (fanout of remote post deletion is not supported yet)
         """
-        if (
-            instance.type_data
-            and "object" in instance.type_data
-            and "relatedWith" in instance.type_data.get("object", {})
-        ):
-            settings.NEODB_MQ.enqueue(
-                "takahe.ap_handlers.post_deleted",
-                instance.pk,
-                instance.type_data["object"],
-            )
-
+        settings.NEODB_MQ.enqueue(
+            "takahe.ap_handlers.post_deleted",
+            instance.pk,
+            True,
+            instance.type_data.get("object", {}),
+        )
         from users.models import Bookmark
         from .post_interaction import PostInteraction, PostInteractionStates
         from .timeline_event import TimelineEvent
@@ -560,29 +555,11 @@ class Post(StatorModel):
     def neodb_sync_local(
         self: "Post", reply_to: "Post | None", content: str, create: bool
     ):
-        if (
-            reply_to
-            and reply_to.type_data
-            and reply_to.author == self.author
-            and "object" in reply_to.type_data
-            and "relatedWith" in reply_to.type_data["object"]
-        ):
-            tag = reply_to.type_data["object"]["tag"]
-        elif (
-            not create
-            and self.type_data
-            and "object" in self.type_data
-            and "relatedWith" in self.type_data["object"]
-        ):
-            tag = self.type_data["object"]["tag"]
-        else:
-            return
         if create:
             func = "takahe.ap_handlers.post_created"
         else:
             func = "takahe.ap_handlers.post_edited"
-        obj = {"tag": tag, "relatedWith": [{"content": content, "type": "Note"}]}
-        settings.NEODB_MQ.enqueue(func, self.pk, obj)
+        settings.NEODB_MQ.enqueue(func, self.pk, {"raw_content": content})
 
     @classmethod
     def create_local(
@@ -1263,7 +1240,10 @@ class Post(StatorModel):
                 and "relatedWith" in post.type_data.get("object", {})
             ):
                 settings.NEODB_MQ.enqueue(
-                    "takahe.ap_handlers.post_deleted", post.pk, post.type_data["object"]
+                    "takahe.ap_handlers.post_deleted",
+                    post.pk,
+                    False,
+                    post.type_data["object"],
                 )
             post.delete()
 
