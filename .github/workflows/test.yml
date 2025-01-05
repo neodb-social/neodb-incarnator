@@ -4,6 +4,7 @@ on:
   push:
     paths:
       - '**.py'
+      - '**.yml'
       - 'requirements-dev.lock'
     branches:
       - main
@@ -17,11 +18,16 @@ jobs:
   test:
     name: test py${{ matrix.python-version }} with pg${{ matrix.postgres-version }}
     runs-on: ubuntu-latest
+    services:
+      redis:
+        image: redis
+        ports:
+          - 6379:6379
     timeout-minutes: 8
     strategy:
       matrix:
-        python-version: ["3.11", "3.12"]
-        postgres-version: [15, 16]
+        python-version: ["3.12"]
+        postgres-version: [12, 16]
     steps:
       - uses: actions/checkout@v4
       - name: Set up Python ${{ matrix.python-version }}
