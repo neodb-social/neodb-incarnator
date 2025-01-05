@@ -122,6 +122,8 @@ class FanOutStates(StateGraph):
                         ),
                         body=canonicalise(post.to_delete_ap()),
                     )
+                except ValueError:
+                    pass # ignore 401 when identity deletion is processed by remote earlier
                 except httpx.RequestError:
                     return
 
