@@ -156,12 +156,6 @@ class PostStates(StateGraph):
         - Undo all interactions (so that remote follower of a local booster will unsee it from their timeline)
         - Fan out the deletion of local post (fanout of remote post deletion is not supported yet)
         """
-        settings.NEODB_MQ.enqueue(
-            "takahe.ap_handlers.post_deleted",
-            instance.pk,
-            True,
-            instance.type_data.get("object", {}),
-        )
         from users.models import Bookmark
         from .post_interaction import PostInteraction, PostInteractionStates
         from .timeline_event import TimelineEvent

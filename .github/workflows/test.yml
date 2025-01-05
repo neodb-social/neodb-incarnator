@@ -7,6 +7,7 @@ on:
       - 'requirements-dev.lock'
     branches:
       - main
+      - neodb
   pull_request:
     paths:
       - '**.py'
