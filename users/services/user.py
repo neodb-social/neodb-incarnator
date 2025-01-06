@@ -22,7 +22,8 @@ class UserService:
         """
         Creates a new user
         """
-        raise ValueError("Creating new user is not supported in NeoDB")
+        if settings.SETUP.ENVIRONMENT == "production":
+            raise ValueError("Creating new user is not supported in NeoDB")
         # Make the new user
         user = User.objects.create(email=email)
         # Auto-promote the user to admin if that setting is set

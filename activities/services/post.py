@@ -163,7 +163,7 @@ class PostService:
             "takahe.ap_handlers.post_deleted",
             self.post.pk,
             True,
-            self.post.type_data.get("object", {}),
+            (self.post.type_data or {}).get("object", {}),
         )
 
     def pin_as(self, identity: Identity):
