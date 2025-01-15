@@ -92,17 +92,21 @@ class IdentityStates(StateGraph):
         from users.models import Follow
 
         if broadcast:
-            for target in Identity.objects.filter(
-                local=False, shared_inbox_uri__isnull=False
-            ).distinct("shared_inbox_uri"):
+            for target in (
+                Identity.objects.filter(local=False, shared_inbox_uri__isnull=False)
+                .exclude(state=IdentityStates.connection_issue)
+                .distinct("shared_inbox_uri")
+            ):
                 FanOut.objects.create(
                     identity=target, type=type_, subject_identity=identity
                 )
             return
         # Fan out to each target
         shared_inboxes = set()
-        for follower in Follow.objects.select_related("source", "target").filter(
-            target=identity
+        for follower in (
+            Follow.objects.select_related("source", "target")
+            .filter(target=identity)
+            .exclude(source__state=IdentityStates.connection_issue)
         ):
             # Dedupe shared_inbox_uri
             shared_uri = follower.source.shared_inbox_uri

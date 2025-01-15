@@ -869,9 +869,13 @@ class Post(StatorModel):
                     targets.add(follow.identity)
         # Then, if it's not mentions only, also deliver to followers
         if self.visibility != Post.Visibilities.mentioned:
-            for follower in self.author.inbound_follows.filter(
-                state__in=FollowStates.group_active()
-            ).select_related("source"):
+            for follower in (
+                self.author.inbound_follows.filter(
+                    state__in=FollowStates.group_active()
+                )
+                .exclude(source__state=IdentityStates.connection_issue)
+                .select_related("source")
+            ):
                 targets.add(follower.source)
 
         # If it's a reply, always include the original author if we know them
