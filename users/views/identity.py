@@ -234,6 +234,8 @@ class IdentityFollows(ListView):
             handle,
             local=False,
         )
+        if request.ap_json:  # todo return actual follows info
+            return JsonResponse({}, content_type="application/activity+json")
         if not Config.load_identity(self.identity).visible_follows:
             raise Http404("Hidden follows")
         return super().get(request, identity=self.identity)
