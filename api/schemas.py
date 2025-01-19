@@ -168,6 +168,7 @@ class Status(Schema):
     muted: bool = False
     bookmarked: bool = False
     pinned: bool = False
+    ext_neodb: dict = None
 
     @classmethod
     def from_post(

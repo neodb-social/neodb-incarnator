@@ -1343,6 +1343,8 @@ class Post(StatorModel):
             "text": self.safe_content_remote(),
             "edited_at": format_ld_date(self.edited) if self.edited else None,
         }
+        if isinstance(self.type_data, dict) and "object" in self.type_data:
+            value["ext_neodb"] = self.type_data["object"]
         if interactions:
             value["favourited"] = self.pk in interactions.get("like", [])
             value["reblogged"] = self.pk in interactions.get("boost", [])
