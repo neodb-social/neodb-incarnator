@@ -202,11 +202,7 @@ class IdentityStates(StateGraph):
             identity.calculate_stats()
             return cls.updated
         # Run the actor fetch and progress to updated if it succeeds
-        if (
-            identity.domain
-            and identity.domain.state != DomainStates.connection_issue
-            and identity.fetch_actor()
-        ):
+        if identity.fetch_actor():
             return cls.updated
 
     @classmethod
