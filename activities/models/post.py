@@ -1015,7 +1015,7 @@ class Post(StatorModel):
                 post.content,
             )
             post.sensitive = data.get("sensitive", False)
-            post.published = parse_ld_date(data.get("published"))
+            post.published = parse_ld_date(data.get("published")) or timezone.now()
             post.edited = parse_ld_date(data.get("updated"))
             post.in_reply_to = data.get("inReplyTo")
             post.language = get_language(data) or ""
