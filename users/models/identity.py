@@ -38,7 +38,7 @@ from core.uris import (
 )
 from stator.exceptions import TryAgainLater
 from stator.models import State, StateField, StateGraph, StatorModel
-from users.models.domain import Domain, DomainStates
+from users.models.domain import Domain
 from users.models.inbox_message import InboxMessage
 from users.models.system_actor import SystemActor
 
