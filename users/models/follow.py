@@ -329,7 +329,7 @@ class Follow(StatorModel):
         if isinstance(data, str):
             bits = data.strip("/").split("/")
             if bits[-2] != "follow":
-                raise ValueError(f"Unknown Follow object URI: {data}")
+                raise cls.DoesNotExist(f"Unknown Follow object URI: {data}")
             return Follow.objects.get(pk=bits[-1])
         # Otherwise, do object resolve
         else:
