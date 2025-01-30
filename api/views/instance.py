@@ -1,4 +1,5 @@
 import datetime
+import markdown_it
 
 import pycountry
 from django.conf import settings
@@ -27,6 +28,11 @@ def instance_info_v1(request) -> dict:
     admin_identity = (
         Identity.objects.filter(users__admin=True).order_by("created").first()
     )
+    rules = [{"id":str(i+1), "text":s, "hint":''} for i, s in enumerate([
+        s.strip()
+        for s in (request.config.policy_rules or "").replace("\r", "").split("\n\n")
+        if s.strip()
+    ])]
     return {
         "uri": request.headers.get("host", settings.SETUP.MAIN_DOMAIN),
         "title": request.config.site_name,
@@ -70,7 +76,7 @@ def instance_info_v1(request) -> dict:
         "contact_account": (
             schemas.Account.from_identity(admin_identity) if admin_identity else None
         ),
-        "rules": [],
+        "rules": rules,
     }
 
 
@@ -86,6 +92,11 @@ def instance_info_v2(request) -> dict:
     admin_identity = (
         Identity.objects.filter(users__admin=True).order_by("created").first()
     )
+    rules = [{"id":str(i+1), "text":s, "hint":''} for i, s in enumerate([
+        s.strip()
+        for s in (request.config.policy_rules or "").replace("\r", "").split("\n\n")
+        if s.strip()
+    ])]
     return {
         "domain": current_domain.domain,
         "title": Config.system.site_name,
@@ -149,7 +160,7 @@ def instance_info_v2(request) -> dict:
                 else None
             ),
         },
-        "rules": [],
+        "rules": rules,
     }
 
 
@@ -207,3 +218,9 @@ def languages(request) -> list:
         ]
         cache.set("instance_languages", languages, timeout=3600)
     return languages
+
+
+@api_view.get
+def extended_description(request) -> dict:
+    txt = markdown_it.MarkdownIt().render(request.config.site_about)
+    return {"content": txt}

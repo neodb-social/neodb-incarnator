@@ -70,6 +70,7 @@ urlpatterns = [
     path("v1/instance/activity", instance.activity),
     path("v1/instance/peers", instance.peers),
     path("v1/instance/languages", instance.languages),
+    path("v1/instance/extended_description", instance.extended_description),
     path("v2/instance", instance.instance_info_v2),
     # Lists
     path(
