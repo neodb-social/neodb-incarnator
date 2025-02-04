@@ -1232,8 +1232,8 @@ class Identity(StatorModel):
             "group": self.actor_type.lower() == "group",
             "discoverable": self.discoverable,
             "indexable": self.indexable,
-            "suspended": False,
-            "limited": False,
+            "suspended": self.restriction == Identity.Restriction.blocked,
+            "limited": self.restriction == Identity.Restriction.limited,
             "created_at": format_ld_date(
                 self.created.replace(hour=0, minute=0, second=0, microsecond=0)
             ),
