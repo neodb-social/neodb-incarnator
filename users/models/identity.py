@@ -813,6 +813,7 @@ class Identity(StatorModel):
         # Find by actor
         try:
             actor = cls.by_actor_uri(data["actor"])
+            settings.NEODB_MQ.enqueue("takahe.ap_handlers.identity_deleted", actor.pk)
             actor.delete()
         except cls.DoesNotExist:
             pass
@@ -825,8 +826,6 @@ class Identity(StatorModel):
         """
         from api.models import Authorization, Token
 
-        if settings.SETUP.ENVIRONMENT == "production":
-            raise ValueError("Deleting identity is only available in NeoDB")
         # Remove all login tokens
         Authorization.objects.filter(identity=self).delete()
         Token.objects.filter(identity=self).delete()
@@ -836,6 +835,7 @@ class Identity(StatorModel):
         self.save()
         # Move ourselves to deleted
         self.transition_perform(IdentityStates.deleted)
+        settings.NEODB_MQ.enqueue("takahe.ap_handlers.identity_deleted", self.pk)
 
     ### Actor/Webfinger fetching ###
 

@@ -150,6 +150,17 @@ class InboxMessageStates(StateGraph):
                     Report.handle_ap(instance.message)
                 case "__internal__":
                     match instance.message_object_type:
+                        case "deleteidentity":
+                            try:
+                                i = Identity.by_actor_uri(
+                                    instance.message["object"]["actor"]
+                                )
+                                if not i.local:
+                                    i.delete()
+                                elif not i.deleted:
+                                    i.mark_deleted()
+                            except Exception as e:
+                                print(e)
                         case "fetchidentity":
                             try:
                                 Identity.by_handle(
