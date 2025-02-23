@@ -1,3 +1,4 @@
+import re
 import string
 
 from django import forms
@@ -191,8 +192,15 @@ class IdentityFeed(Feed):
             )[:20]
         ]
 
+    def item_title(self, item: Post):
+        if item.summary:
+            return item.summary
+        txt = item.safe_content_remote().replace("<br>", "\n").replace("</p>", "\n")
+        txt = re.sub(r"<.*?>", "", txt).strip().split("\n")[0]
+        return txt if len(txt) < 100 else txt[:100] + "..."
+
     def item_description(self, item: Post):
-        return item.safe_content_remote()
+        return re.sub(r"[\x00-\x08\x0B-\x0C\x0E-\x1F]", "", item.safe_content_remote())
 
     def item_link(self, item: Post):
         return item.absolute_object_uri()
