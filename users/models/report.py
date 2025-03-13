@@ -27,6 +27,7 @@ class ReportStates(StateGraph):
         """
         from users.models import SystemActor, User
 
+        settings.NEODB_MQ.enqueue("takahe.ap_handlers.report_received", instance.pk)
         recipients = []
         for mod in User.objects.filter(
             models.Q(moderator=True) | models.Q(admin=True)
