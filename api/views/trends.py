@@ -43,6 +43,7 @@ def trends_statuses(
         popular_post_ids = list(
             Post.objects.not_hidden()
             .public()
+            .visible_to(request.identity)
             .filter(author__discoverable=True)
             .filter(published__gte=since)
             .annotate(num_interactions=Count("interactions"))
