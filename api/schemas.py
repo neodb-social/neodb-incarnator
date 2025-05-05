@@ -503,3 +503,16 @@ class PushSubscription(Schema):
             return value
         else:
             return None
+
+
+class Report(Schema):
+    id: str
+    action_taken: bool = False
+    action_taken_at: str | None = None
+    category: str = "other"
+    comment: str
+    forwarded: bool = False
+    created_at: str
+    status_ids: list[int]
+    rule_ids: list[int] | None = None
+    target_account: Account

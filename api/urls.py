@@ -16,6 +16,7 @@ from api.views import (
     polls,
     preferences,
     push,
+    report,
     search,
     statuses,
     suggestions,
@@ -133,4 +134,5 @@ urlpatterns = [
     path("v1/trends/links", trends.trends_links),
     # Suggestions
     path("v2/suggestions", suggestions.suggested_users),
+    path("v1/reports", report.file_report),
 ]
