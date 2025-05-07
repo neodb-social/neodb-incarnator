@@ -1,5 +1,6 @@
 from collections.abc import Iterable
 
+from django.conf import settings
 from django.db import models, transaction
 from django.utils import timezone
 
@@ -86,6 +87,13 @@ class PostInteractionStates(StateGraph):
                 )
         else:
             raise ValueError("Cannot fan out unknown type")
+        settings.NEODB_MQ.enqueue(
+            "takahe.ap_handlers.post_interacted",
+            instance.pk,
+            instance.type,
+            instance.post.pk,
+            instance.identity_id,
+        )
         return cls.fanned_out
 
     @classmethod
@@ -124,6 +132,13 @@ class PostInteractionStates(StateGraph):
                 subject_post=instance.post,
                 subject_post_interaction=instance,
             )
+        settings.NEODB_MQ.enqueue(
+            "takahe.ap_handlers.post_uninteracted",
+            instance.pk,
+            instance.type,
+            instance.post.pk,
+            instance.identity_id,
+        )
         return cls.undone_fanned_out
 
 

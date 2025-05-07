@@ -1,5 +1,4 @@
 import httpx
-from django.conf import settings
 from django.db import models
 
 from activities.models.timeline_event import TimelineEvent
@@ -157,13 +156,6 @@ class FanOutStates(StateGraph):
                     identity=instance.identity,
                     interaction=interaction,
                 )
-                settings.NEODB_MQ.enqueue(
-                    "takahe.ap_handlers.post_interacted",
-                    interaction.pk,
-                    interaction.type,
-                    interaction.post.pk,
-                    interaction.identity_id,
-                )
 
             # Handle sending remote boosts/likes/votes/pins
             case (FanOut.Types.interaction, False):
@@ -195,13 +187,6 @@ class FanOutStates(StateGraph):
                 TimelineEvent.delete_post_interaction(
                     identity=instance.identity,
                     interaction=interaction,
-                )
-                settings.NEODB_MQ.enqueue(
-                    "takahe.ap_handlers.post_uninteracted",
-                    interaction.pk,
-                    interaction.type,
-                    interaction.post.pk,
-                    interaction.identity_id,
                 )
 
             # Handle sending remote undoing boosts/likes/pins
