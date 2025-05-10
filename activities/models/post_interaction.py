@@ -45,8 +45,10 @@ class PostInteractionStates(StateGraph):
             require_active=True,
         ):
             return cls.undone_fanned_out
-        # Boost: add TimelineEvent for booster if they is local
-        if instance.type == PostInteraction.Types.boost and instance.identity.local:
+        # Boost: add TimelineEvent for local booster and remote group
+        if instance.type == PostInteraction.Types.boost and (
+            instance.identity.local or instance.identity.actor_type == "group"
+        ):
             TimelineEvent.objects.create(
                 identity=instance.identity,
                 type=TimelineEvent.Types.boost,

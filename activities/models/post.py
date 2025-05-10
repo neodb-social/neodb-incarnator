@@ -1219,12 +1219,19 @@ class Post(StatorModel):
         """
         Handles an incoming create request
         """
+        from . import TimelineEvent
+
         with transaction.atomic():
             # Ensure the Create actor is the Post's attributedTo
             if data["actor"] != data["object"]["attributedTo"]:
                 raise ValueError("Create actor does not match its Post object", data)
             # Create it, stator will fan it out locally
-            cls.by_ap(data["object"], create=True, update=True, fetch_author=True)
+            post = cls.by_ap(
+                data["object"], create=True, update=True, fetch_author=True
+            )
+            if post.author and post.author.actor_type == "group":
+                # for remote group, save it in this actor's timeline so we can show later
+                TimelineEvent.add_post(post.author, post)
 
     @classmethod
     def handle_update_ap(cls, data):
