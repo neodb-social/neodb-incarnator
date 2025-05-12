@@ -51,6 +51,7 @@ class Account(Schema):
     username: str
     acct: str
     url: str
+    uri: str
     display_name: str
     note: str
     avatar: str
@@ -72,6 +73,7 @@ class Account(Schema):
     statuses_count: int
     followers_count: int
     following_count: int
+    hide_collections: bool = False
     source: dict | None = None
 
     @classmethod
@@ -275,6 +277,7 @@ class Notification(Schema):
         "admin.sign_up",
         "admin.report",
     ]
+    group_key: str
     created_at: str
     account: Account
     status: Status | None = None

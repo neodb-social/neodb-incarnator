@@ -1214,6 +1214,7 @@ class Identity(StatorModel):
             "username": self.username or "",
             "acct": self.username if source else self.handle,
             "url": self.absolute_profile_uri() or "",
+            "uri": self.actor_uri or "",
             "display_name": self.name or "",
             "note": self.summary or "",
             "avatar": self.local_icon_url().absolute,
@@ -1247,6 +1248,7 @@ class Identity(StatorModel):
             "statuses_count": stats.get("statuses_count", 0),
             "followers_count": stats.get("followers_count", 0),
             "following_count": stats.get("following_count", 0),
+            "hide_collections": not Config.load_identity(self).visible_follows,
         }
         if source:
             privacy_map = {

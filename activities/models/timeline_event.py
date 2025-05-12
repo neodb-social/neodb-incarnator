@@ -299,6 +299,7 @@ class TimelineEvent(models.Model):
             raise ValueError(f"Cannot convert {self.type} to notification JSON")
         result = {
             "id": str(self.pk),
+            "group_key": "ungrouped-" + str(self.pk),
             "created_at": format_ld_date(self.created),
             "account": self.subject_identity.to_mastodon_json(),
             "type": TimelineEvent.NOTIFICATION_NAMES[self.type],
