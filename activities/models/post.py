@@ -1152,7 +1152,7 @@ class Post(StatorModel):
         return post
 
     @classmethod
-    def by_object_uri(cls, object_uri, fetch=False) -> "Post":
+    def by_object_uri(cls, object_uri, fetch=False, fetch_as=None) -> "Post":
         """
         Gets the post by URI - either looking up locally, or fetching
         from the other end if it's not here.
@@ -1162,7 +1162,7 @@ class Post(StatorModel):
         except cls.DoesNotExist:
             if fetch:
                 try:
-                    response = SystemActor().signed_request(
+                    response = (fetch_as or SystemActor()).signed_request(
                         method="get", uri=object_uri
                     )
                 except (httpx.HTTPError, ssl.SSLCertVerificationError, ValueError):
