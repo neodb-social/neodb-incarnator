@@ -252,6 +252,8 @@ class IdentityFollows(ListView):
         return super().get(request, identity=self.identity)
 
     def serve_ap_json(self):
+        if settings.SETUP.NO_FEDERATION:
+            return HttpResponse(status=503)
         # TODO return list based on Config.load_identity(self.identity).visible_follows
         return JsonResponse(
             canonicalise(
