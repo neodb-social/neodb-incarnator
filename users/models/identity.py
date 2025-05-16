@@ -606,6 +606,14 @@ class Identity(StatorModel):
         return f"{self.username}@(unknown server)"
 
     @property
+    def uri_domain(self):
+        return self.domain.uri_domain if self.domain else self.actor_domain
+
+    @property
+    def actor_domain(self):
+        return self.actor_uri.split("://")[1].split("/")[0].lower()
+
+    @property
     def data_age(self) -> float:
         """
         How old our copy of this data is, in seconds

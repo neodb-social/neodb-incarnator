@@ -540,12 +540,16 @@ class PostInteraction(StatorModel):
                 return
             post = Post.by_object_uri(object_uri, fetch=True)
 
-            return PostInteraction.objects.get_or_create(
+            i = PostInteraction.objects.get_or_create(
                 type=cls.Types.pin,
                 identity=identity,
                 post=post,
-                state=PostInteractionStates.new,
+                defaults={"state": PostInteractionStates.new},
             )[0]
+            if i.state not in PostInteractionStates.group_active():
+                i.state = PostInteractionStates.new
+                i.save()
+            return i
 
     @classmethod
     def handle_remove_ap(cls, data):

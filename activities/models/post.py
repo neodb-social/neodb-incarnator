@@ -1314,6 +1314,7 @@ class Post(StatorModel):
 
     def to_mastodon_json(self, interactions=None, bookmarks=None, identity=None):
         reply_parent = None
+        domain = identity.domain.uri_domain if identity else settings.MAIN_DOMAIN
         if self.in_reply_to:
             # Load the PK and author.id explicitly to prevent a SELECT on the entire author Identity
             reply_parent = (
@@ -1351,7 +1352,7 @@ class Post(StatorModel):
                 [
                     {
                         "name": tag,
-                        "url": f"https://{self.author.domain.uri_domain}/tags/{tag}/",
+                        "url": f"https://{domain}/tags/{tag}/",
                     }
                     for tag in self.hashtags
                 ]
