@@ -378,9 +378,11 @@ class Follow(StatorModel):
         """
         # Resolve source and target and see if a Follow exists (it really should)
         try:
+            if not data["object"]:
+                raise Identity.DoesNotExist()
             follow = cls.by_ap(data["object"])
         except (cls.DoesNotExist, Identity.DoesNotExist):
-            logger.info(
+            logger.warning(
                 "Follow or Identity not found for incoming Accept",
                 extra={"data": data},
             )

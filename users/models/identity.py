@@ -1003,7 +1003,7 @@ class Identity(StatorModel):
         for item in items:
             if not isinstance(item, dict):
                 continue
-            if item["type"] == "Note":
+            if item.get("type") == "Note":
                 ids.append(item["id"])
         return ids
 

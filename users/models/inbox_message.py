@@ -222,7 +222,7 @@ class InboxMessage(StatorModel):
     @property
     def message_object_type(self) -> str | None:
         if isinstance(self.message["object"], dict):
-            return self.message["object"]["type"].lower()
+            return self.message["object"].get("type", "").lower() or None
         else:
             return None
 

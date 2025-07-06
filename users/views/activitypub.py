@@ -159,9 +159,15 @@ class Inbox(FederatedView):
         if len(request.body) > settings.JSONLD_MAX_SIZE:
             return HttpResponseBadRequest("Payload size too large")
         # Load the LD
-        document = canonicalise(
-            json.loads(request.body), include_security=True, outbound=False
-        )
+        try:
+            document = canonicalise(
+                json.loads(request.body), include_security=True, outbound=False
+            )
+        except ValueError:
+            logger.warning(
+                "Inbox error when parsing JSON to LDDocument: %s", request.body.decode()
+            )
+            return HttpResponseBadRequest("Error parsing JSON")
         document_type = document["type"]
         document_subtype = None
         if isinstance(document.get("object"), dict):
