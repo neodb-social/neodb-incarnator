@@ -50,7 +50,7 @@ class AuthorizationView(LoginRequiredMixin, View):
 
     def get(self, request):
         redirect_uri = self.request.GET["redirect_uri"]
-        scope = self.request.GET.get("scope", "read")
+        scope = self.request.GET.get("scope", "read write")
         state = self.request.GET.get("state")
 
         response_type = self.request.GET.get("response_type")
@@ -152,7 +152,6 @@ class TokenView(View):
         )
         post_data.setdefault("client_id", auth_client_id)
         post_data.setdefault("client_secret", auth_client_secret)
-
         grant_type = post_data.get("grant_type")
         if grant_type not in (
             "authorization_code",

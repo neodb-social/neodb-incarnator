@@ -14,12 +14,16 @@ class Application(Schema):
     website: str | None = None
     client_id: str
     client_secret: str
-    redirect_uri: str = Field(alias="redirect_uris")
+    redirect_uri: str
+    redirect_uris: list[str]
     vapid_key: str | None = None
 
     @classmethod
     def from_application(cls, application: api_models.Application) -> "Application":
-        return cls(**application.to_mastodon_json())
+        a = application.to_mastodon_json()
+        a["redirect_uri"] = a["redirect_uris"]
+        a["redirect_uris"] = [a["redirect_uri"]]
+        return cls(**a)
 
     @classmethod
     def from_application_no_keys(
