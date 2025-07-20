@@ -390,9 +390,7 @@ class PostInteraction(StatorModel):
         Returns the AP JSON to add a pin interaction to the featured collection
         """
         return {
-            "id": self.identity.actor_uri
-            + "collections/featured/#add/post/"
-            + self.post.pk,
+            "id": f"{self.identity.actor_uri}collections/featured/#add/post/{self.post.pk}",
             "type": "Add",
             "actor": self.identity.actor_uri,
             "object": self.post.object_uri,
@@ -404,9 +402,7 @@ class PostInteraction(StatorModel):
         Returns the AP JSON to remove a pin interaction from the featured collection
         """
         return {
-            "id": self.identity.actor_uri
-            + "collections/featured/#remove/post/"
-            + self.post.pk,
+            "id": f"{self.identity.actor_uri}collections/featured/#remove/post/{self.post.pk}",
             "type": "Remove",
             "actor": self.identity.actor_uri,
             "object": self.post.object_uri,
