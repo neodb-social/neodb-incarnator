@@ -1232,7 +1232,10 @@ class Post(StatorModel):
 
         with transaction.atomic():
             # Ensure the Create actor is the Post's attributedTo
-            if data["actor"] != data["object"]["attributedTo"]:
+            attributedTo = data["object"]["attributedTo"]
+            if isinstance(attributedTo, dict):
+                attributedTo = attributedTo["id"]
+            if data["actor"] != attributedTo:
                 raise ValueError("Create actor does not match its Post object", data)
             # Create it, stator will fan it out locally
             post = cls.by_ap(
@@ -1249,7 +1252,10 @@ class Post(StatorModel):
         """
         with transaction.atomic():
             # Ensure the Create actor is the Post's attributedTo
-            if data["actor"] != data["object"]["attributedTo"]:
+            attributedTo = data["object"]["attributedTo"]
+            if isinstance(attributedTo, dict):
+                attributedTo = attributedTo["id"]
+            if data["actor"] != attributedTo:
                 raise ValueError("Create actor does not match its Post object", data)
             # Find it and update it
             try:

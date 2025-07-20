@@ -293,6 +293,7 @@ class Hashtag(StatorModel):
         Returns the AP JSON to add a featured tag to the given identity.
         """
         return {
+            "id": identity.actor_uri + "collections/featured/#add/" + self.hashtag,
             "type": "Add",
             "actor": identity.actor_uri,
             "target": identity.actor_uri + "collections/featured/",
@@ -304,6 +305,7 @@ class Hashtag(StatorModel):
         Returns the AP JSON to remove a featured tag from the given identity.
         """
         return {
+            "id": identity.actor_uri + "collections/featured/#remove/" + self.hashtag,
             "type": "Remove",
             "actor": identity.actor_uri,
             "target": identity.actor_uri + "collections/featured/",
