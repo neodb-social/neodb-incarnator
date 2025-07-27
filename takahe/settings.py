@@ -7,7 +7,6 @@ from typing import Annotated, Literal
 
 import dj_database_url
 import django_cache_url
-import httpx
 import sentry_sdk
 from corsheaders.defaults import default_headers
 from pydantic import (
@@ -492,8 +491,8 @@ if SETUP.ERROR_EMAILS:
     ADMINS = [("Admin", e) for e in SETUP.ERROR_EMAILS]
 
 TAKAHE_USER_AGENT = (
-    f"python-httpx/{httpx.__version__} "
-    f"(neodb/{__neodb_version__}; Takahe/{__version__}; +https://{SETUP.MAIN_DOMAIN}/)"
+    f"NeoDB/{__neodb_version__} "
+    f"(Takahe/{__version__}; +https://{SETUP.MAIN_DOMAIN}/)"
 )
 
 FANOUT_LIMIT_DAYS = SETUP.FANOUT_LIMIT_DAYS
