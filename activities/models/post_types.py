@@ -18,6 +18,8 @@ class QuestionOption(BaseModel):
     votes: int = 0
 
     def __init__(self, **data) -> None:
+        if "name" not in data:
+            data["name"] = list((data.get("nameMap", {}) or {"": ""}).values())[0]
         data["votes"] = data.get("votes", data.get("replies", {}).get("totalItems", 0))
         super().__init__(**data)
 
