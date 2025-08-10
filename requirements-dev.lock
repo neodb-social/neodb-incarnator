@@ -22,7 +22,7 @@ cryptography==44.0.2
 deepmerge==2.0
 distlib==0.3.9
 dj-database-url==2.3.0
-django==4.2.20
+django==5.2.5
 django-cache-url==3.4.5
 django-cors-headers==4.7.0
 django-debug-toolbar==5.2.0
@@ -86,7 +86,7 @@ pywebpush==2.0.3
 pyyaml==6.0.2
 redis==6.0.0
 requests==2.32.3
-rq==2.1.0
+rq==2.3.2
 rsa==4.9.1
 s3transfer==0.12.0
 sentry-sdk==2.27.0
