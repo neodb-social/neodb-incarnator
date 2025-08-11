@@ -26,8 +26,8 @@ jobs:
     timeout-minutes: 8
     strategy:
       matrix:
-        python-version: ["3.12"]
-        postgres-version: [12, 16]
+        python-version: ["3.13"]
+        postgres-version: [14, 17]
     steps:
       - uses: actions/checkout@v4
       - name: Set up Python ${{ matrix.python-version }}
