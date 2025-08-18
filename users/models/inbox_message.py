@@ -170,6 +170,18 @@ class InboxMessageStates(StateGraph):
                                 print(e)
                         case "fetchpost":
                             Post.handle_fetch_internal(instance.message["object"])
+                        case "searchurl":
+                            from activities.services.search import SearchService
+
+                            handle = instance.message["object"].get("handle") 
+                            identity = (
+                                Identity.by_handle(handle, fetch=True)
+                                if handle
+                                else None
+                            )
+                            url = instance.message["object"]["url"]
+                            ss = SearchService(url, identity)
+                            ss.search_url()
                         case "cleartimeline":
                             TimelineEvent.handle_clear_timeline(
                                 instance.message["object"]
