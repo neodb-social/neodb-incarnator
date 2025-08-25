@@ -173,7 +173,7 @@ class InboxMessageStates(StateGraph):
                         case "searchurl":
                             from activities.services.search import SearchService
 
-                            handle = instance.message["object"].get("handle") 
+                            handle = instance.message["object"].get("handle")
                             identity = (
                                 Identity.by_handle(handle, fetch=True)
                                 if handle
