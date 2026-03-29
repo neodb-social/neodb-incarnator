@@ -6,7 +6,7 @@ from hatchway import ApiError, QueryOrBody, api_view
 
 from activities.models import PostAttachment, PostAttachmentStates
 from api import schemas
-from core.files import blurhash_image, resize_image
+from core.files import blurhash_image, get_video_dimensions, resize_image
 
 from ..decorators import scope_required
 
@@ -49,8 +49,16 @@ def upload_media(
             thumbnail_file,
         )
     else:
+        width = None
+        height = None
+        if content_type.startswith("video/"):
+            dims = get_video_dimensions(file)
+            if dims:
+                width, height = dims
         attachment = PostAttachment.objects.create(
             mimetype=content_type,
+            width=width,
+            height=height,
             name=description or None,
             state=PostAttachmentStates.fetched,
             author=request.identity,

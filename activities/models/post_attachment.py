@@ -171,6 +171,8 @@ class PostAttachment(StatorModel):
             if self.width and self.height:
                 meta["original"]["width"] = self.width
                 meta["original"]["height"] = self.height
+                meta["original"]["size"] = f"{self.width}x{self.height}"
+                meta["original"]["aspect"] = self.width / self.height
             preview_url = None
         else:
             meta = {}
