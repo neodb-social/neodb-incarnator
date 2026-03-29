@@ -84,6 +84,32 @@ def post_for_id(request: HttpRequest, id: str) -> Post:
     return get_object_or_404(queryset, pk=id)
 
 
+def _clamp_quote_visibility(requested: int, quoted: int) -> int:
+    """
+    Ensure the quoting post's visibility does not exceed the quoted post's.
+    Ordering: public(0) > unlisted(1) > local_only(4) > followers(2) > mentioned(3).
+    Exception: local_only can only be quoted as local_only or mentioned.
+    """
+    V = Post.Visibilities
+    # Map visibility to a numeric "openness" rank (higher = more public)
+    rank = {V.public: 4, V.unlisted: 3, V.local_only: 2, V.followers: 1, V.mentioned: 0}
+    # Ordered from most public to least
+    ordered = [V.public, V.unlisted, V.local_only, V.followers, V.mentioned]
+    max_rank = rank.get(quoted, 0)
+    # Special case: local_only can only be quoted as local_only or mentioned
+    if quoted == V.local_only and requested not in (V.local_only, V.mentioned):
+        return V.local_only
+    if rank.get(requested, 0) <= max_rank:
+        return requested
+    # Clamp down to the most public allowed visibility
+    for v in ordered:
+        if rank[v] <= max_rank:
+            if quoted == V.local_only and v not in (V.local_only, V.mentioned):
+                continue
+            return v
+    return V.mentioned
+
+
 def _extract_quote_from_trailing_url(text: str) -> tuple["Post | None", str]:
     """
     Detect a trailing URL in the status text that matches a known post.
@@ -134,12 +160,16 @@ def post_status(request, details: PostStatusSchema) -> schemas.Status:
     status_text = details.status or ""
     if not quote_post and status_text:
         quote_post, status_text = _extract_quote_from_trailing_url(status_text)
+    # Enforce: quoting post visibility must not exceed quoted post visibility
+    visibility = visibility_map[details.visibility]
+    if quote_post:
+        visibility = _clamp_quote_visibility(visibility, quote_post.visibility)
     post = Post.create_local(
         author=request.identity,
         content=status_text,
         summary=details.spoiler_text,
         sensitive=details.sensitive,
-        visibility=visibility_map[details.visibility],
+        visibility=visibility,
         reply_to=reply_post,
         quote=quote_post,
         attachments=attachments,
