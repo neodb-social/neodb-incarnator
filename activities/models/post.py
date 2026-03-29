@@ -1014,6 +1014,10 @@ class Post(StatorModel):
         or it's from a blocked domain.
         """
         try:
+            # Normalize attributedTo from object to URI string
+            # (per ActivityStreams spec, attributedTo can be an object or a URI)
+            if isinstance(data.get("attributedTo"), dict):
+                data["attributedTo"] = data["attributedTo"]["id"]
             # Ensure data has the primary fields of all Posts
             if (
                 not isinstance(data["id"], str)
@@ -1431,7 +1435,7 @@ class Post(StatorModel):
             reject_id = Snowflake.generate_post()
             reject_data = {
                 "type": "Reject",
-                "id": (f"{post.author.actor_uri}" f"#reject-{reject_id}"),
+                "id": f"{post.author.actor_uri}#reject-{reject_id}",
                 "actor": post.author.actor_uri,
                 "object": data.get("id", actor_uri),
             }
