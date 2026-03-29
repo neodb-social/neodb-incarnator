@@ -1,3 +1,4 @@
+import base64
 import json
 import logging
 from urllib.parse import urldefrag, urlparse
@@ -215,17 +216,23 @@ class Inbox(FederatedView):
         ]:
             return HttpResponse(status=202)
 
-        # authenticate HTTP signature first, if one is present and the actor
-        # is already known to us. An invalid signature is an error and message
-        # should be discarded. NOTE: for previously unknown actors, we
-        # don't have their public key yet!
-        if "signature" in request:
+        http_sig_present = "Signature" in request.headers
+        ld_sig_present = "signature" in document
+        verified = False
+        metadata = {}
+
+        # Authenticate HTTP signature if present. An invalid signature
+        # (key available, sig doesn't match) is a hard rejection.
+        # For unknown actors without a key, pre-compute data for
+        # deferred verification.
+        if http_sig_present:
             try:
                 if identity.public_key:
                     HttpSignature.verify_request(
                         request,
                         identity.public_key,
                     )
+                    verified = True
                     logger.debug(
                         "Inbox: %s from %s has good HTTP signature",
                         document_type,
@@ -236,6 +243,25 @@ class Inbox(FederatedView):
                         "Inbox: New actor, no key available: %s",
                         document["actor"],
                     )
+                    # Pre-compute the signed cleartext and extract the raw
+                    # signature so we can verify later once the key is fetched.
+                    if "digest" in request.headers:
+                        expected_digest = HttpSignature.calculate_digest(request.body)
+                        if request.headers["digest"] != expected_digest:
+                            return HttpResponseBadRequest("Digest is incorrect")
+                    signature_details = HttpSignature.parse_signature(
+                        request.headers["signature"]
+                    )
+                    headers_string = HttpSignature.headers_from_request(
+                        request, signature_details["headers"]
+                    )
+                    metadata["http_sig"] = {
+                        "actor_uri": document["actor"],
+                        "signature": base64.b64encode(
+                            signature_details["signature"]
+                        ).decode(),
+                        "headers_string": headers_string,
+                    }
             except VerificationFormatError as e:
                 logger.warning("Inbox error: Bad HTTP signature format: %s", e.args[0])
                 return HttpResponseBadRequest(e.args[0])
@@ -243,55 +269,70 @@ class Inbox(FederatedView):
                 logger.warning("Inbox error: Bad HTTP signature from %s", identity)
                 return HttpResponseUnauthorized("Bad signature")
 
-        # Mastodon advices not implementing LD Signatures, but
-        # they're widely deployed today. Validate it if one exists.
+        # Validate LD Signature if present.
         # https://docs.joinmastodon.org/spec/security/#ld
-        if "signature" in document:
+        if ld_sig_present:
             try:
-                # signatures are identified by the signature block
                 creator = urldefrag(document["signature"]["creator"]).url
+            except (KeyError, TypeError):
+                logger.warning("Inbox error: Malformed LD signature block")
+                return HttpResponseBadRequest("Malformed LD signature")
+            try:
                 creator_identity = Identity.by_actor_uri(
                     creator, create=True, transient=True
                 )
-                if not creator_identity.public_key:
-                    logger.info("Inbox: New actor, no key available: %s", creator)
-                    # if we can't verify it, we don't keep it
-                    document.pop("signature")
-                else:
+                if creator_identity.public_key:
                     LDSignature.verify_signature(document, creator_identity.public_key)
+                    verified = True
                     logger.debug(
                         "Inbox: %s from %s has good LD signature",
                         document["type"],
                         creator_identity,
                     )
+                else:
+                    logger.info("Inbox: New actor, no key available: %s", creator)
+                    # LD signature data is already in the document; just
+                    # record the creator URI for deferred verification.
+                    metadata["ld_sig"] = {
+                        "creator_uri": creator,
+                    }
             except VerificationFormatError as e:
                 logger.warning("Inbox error: Bad LD signature format: %s", e.args[0])
                 return HttpResponseBadRequest(e.args[0])
             except VerificationError:
-                # An invalid LD Signature might also indicate nothing but
-                # a syntactical difference between implementations.
-                # Strip it out if we can't verify it.
-                if "signature" in document:
-                    document.pop("signature")
-                logger.info(
-                    "Inbox: Stripping invalid LD signature from %s %s",
+                logger.warning(
+                    "Inbox error: Bad LD signature from %s %s",
                     creator_identity,
-                    document["id"],
+                    document.get("id"),
                 )
+                return HttpResponseUnauthorized("Bad signature")
 
-        if not ("signature" in request or "signature" in document):
-            logger.debug(
-                "Inbox: %s from %s is unauthenticated. That's OK.",
+        if not (http_sig_present or ld_sig_present):
+            logger.warning(
+                "Inbox: %s from %s has no signature, rejecting.",
                 document["type"],
                 identity,
             )
+            return HttpResponseUnauthorized("No signature")
 
         # Don't allow injection of internal messages
         if document["type"].startswith("__"):
             return HttpResponseUnauthorized("Bad type")
 
-        # Hand off the item to be processed by the queue
-        InboxMessage.objects.create(message=document)
+        if verified:
+            InboxMessage.objects.create(message=document)
+        else:
+            # Signatures present but keys unavailable; defer until
+            # the actor's key can be fetched and the signature verified.
+            logger.info(
+                "Inbox: Deferring %s from %s pending key fetch",
+                document["type"],
+                identity,
+            )
+            InboxMessage.objects.create(
+                message=document,
+                metadata=metadata,
+            )
         return HttpResponse(status=202)
 
 

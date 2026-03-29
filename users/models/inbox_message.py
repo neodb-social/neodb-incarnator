@@ -1,9 +1,20 @@
+import base64
+import logging
+
 from django.db import models
 from pyld.jsonld import JsonLdError
 
 from activities.models.hashtag import Hashtag
 from core.exceptions import ActivityPubError
+from core.signatures import (
+    HttpSignature,
+    LDSignature,
+    VerificationError,
+    VerificationFormatError,
+)
 from stator.models import State, StateField, StateGraph, StatorModel
+
+logger = logging.getLogger(__name__)
 
 
 class InboxMessageStates(StateGraph):
@@ -15,10 +26,83 @@ class InboxMessageStates(StateGraph):
     received.transitions_to(errored)
 
     @classmethod
+    def _verify_deferred(cls, instance: "InboxMessage") -> bool | None:
+        """
+        Verify signatures that were deferred because the actor's public
+        key was not available at inbox time.
+
+        Returns True if verified, False if verification failed (bad sig),
+        or None if keys are still unavailable (should retry later).
+        """
+        from users.models import Identity  # avoid circular import
+
+        deferred_sigs = instance.metadata
+        if not deferred_sigs:
+            return False
+
+        for sig_type in ["http_sig", "ld_sig"]:
+            if sig_type not in deferred_sigs:
+                continue
+
+            sig_data = deferred_sigs[sig_type]
+            actor_uri = sig_data.get("actor_uri") or sig_data.get("creator_uri")
+            identity = Identity.by_actor_uri(actor_uri, create=True)
+            if not identity.public_key:
+                try:
+                    if not identity.fetch_actor():
+                        continue  # fetch failed, try next sig type
+                except Exception:
+                    continue
+
+            if not identity.public_key:
+                continue
+
+            try:
+                if sig_type == "http_sig":
+                    HttpSignature.verify_signature(
+                        base64.b64decode(sig_data["signature"]),
+                        sig_data["headers_string"],
+                        identity.public_key,
+                    )
+                else:
+                    LDSignature.verify_signature(
+                        instance.message,
+                        identity.public_key,
+                    )
+                logger.debug(
+                    "Inbox: Deferred %s verification succeeded for %s",
+                    sig_type,
+                    actor_uri,
+                )
+                return True
+            except (VerificationError, VerificationFormatError):
+                logger.warning(
+                    "Inbox: Deferred %s verification failed for %s",
+                    sig_type,
+                    actor_uri,
+                )
+                return False
+
+        # No signature could be verified yet (keys still unavailable)
+        return None
+
+    @classmethod
     def handle_received(cls, instance: "InboxMessage"):
         from activities.models import Post, PostInteraction, TimelineEvent
         from users.models import Block, Follow, Identity, Relay, Report
         from users.services import IdentityService
+
+        # If this message has deferred verification data, verify
+        # the signature before processing.
+        if instance.metadata:
+            result = cls._verify_deferred(instance)
+            if result is None:
+                # Keys still unavailable, retry later
+                return None
+            if result is False:
+                return cls.errored
+            # Verified -- clear deferred data and proceed
+            InboxMessage.objects.filter(pk=instance.pk).update(metadata=None)
 
         try:
             match instance.message_type:
@@ -212,6 +296,7 @@ class InboxMessage(StatorModel):
     """
 
     message = models.JSONField()
+    metadata = models.JSONField(null=True, blank=True, default=None)
 
     state = StateField(InboxMessageStates)
 

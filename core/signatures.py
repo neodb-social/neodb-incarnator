@@ -1,4 +1,5 @@
 import base64
+import binascii
 import json
 import logging
 from ssl import SSLCertVerificationError, SSLError
@@ -118,6 +119,8 @@ class HttpSignature:
             raise VerificationError(
                 f"Missing item from details (have: {key_names}, error: {e})"
             )
+        except binascii.Error:
+            raise VerificationFormatError("Invalid base64 in signature")
         return signature_details
 
     @classmethod
@@ -329,6 +332,8 @@ class LDSignature:
             )
         except InvalidSignature:
             raise VerificationError("LDSignature mismatch")
+        except binascii.Error:
+            raise VerificationFormatError("Invalid base64 in signatureValue")
 
     @classmethod
     def create_signature(
