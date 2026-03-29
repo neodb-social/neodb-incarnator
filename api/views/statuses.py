@@ -44,6 +44,7 @@ class PostStatusSchema(Schema):
     status: str | None = None
     in_reply_to_id: str | None = None
     quoted_status_id: str | None = None
+    quote_id: str | None = None
     sensitive: bool = False
     spoiler_text: str | None = None
     visibility: Literal["public", "unlisted", "private", "direct"] = "public"
@@ -105,9 +106,10 @@ def post_status(request, details: PostStatusSchema) -> schemas.Status:
         except Post.DoesNotExist:
             pass
     quote_post = None
-    if details.quoted_status_id:
+    quote_id = details.quoted_status_id or details.quote_id
+    if quote_id:
         try:
-            quote_post = Post.objects.get(pk=details.quoted_status_id)
+            quote_post = Post.objects.get(pk=quote_id)
         except Post.DoesNotExist:
             pass
     post = Post.create_local(
