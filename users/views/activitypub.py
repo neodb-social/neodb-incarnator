@@ -105,11 +105,14 @@ class NodeInfo2(View):
             local_posts = Post.objects.filter(
                 local=True, author__domain=request.domain
             ).count()
-            metadata = {"nodeName": request.config.site_name}
+            metadata = {
+                "nodeName": request.config.site_name,
+                "features": ["quote_posting"],
+            }
         else:
             local_identities = Identity.objects.filter(local=True).count()
             local_posts = Post.objects.filter(local=True).count()
-            metadata = {}
+            metadata = {"features": ["quote_posting"]}
         return JsonResponse(
             {
                 "version": "2.0",

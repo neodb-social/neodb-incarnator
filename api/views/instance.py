@@ -84,6 +84,14 @@ def instance_info_v1(request) -> dict:
             schemas.Account.from_identity(admin_identity) if admin_identity else None
         ),
         "rules": rules,
+        "pleroma": {
+            "metadata": {
+                "features": [
+                    "mastodon_api",
+                    "quote_posting",
+                ],
+            },
+        },
     }
 
 
