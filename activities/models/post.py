@@ -1101,7 +1101,10 @@ class Post(StatorModel):
             post.sensitive = data.get("sensitive", False)
             post.published = parse_ld_date(data.get("published")) or timezone.now()
             post.edited = parse_ld_date(data.get("updated"))
-            post.in_reply_to = data.get("inReplyTo")
+            in_reply_to = data.get("inReplyTo")
+            if isinstance(in_reply_to, dict):
+                in_reply_to = in_reply_to.get("id")
+            post.in_reply_to = in_reply_to
             # Quote URL - check properties in priority order (FEP-044f)
             post.quote_url = None
             for key in ("quote", "_misskey_quote", "quoteUrl", "quoteUri"):
