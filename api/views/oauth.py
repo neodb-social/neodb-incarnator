@@ -97,6 +97,15 @@ class AuthorizationView(LoginRequiredMixin, View):
         redirect_uri = post_data["redirect_uri"]
         scope = post_data["scope"]
         application = Application.objects.get(client_id=post_data["client_id"])
+
+        if application.redirect_uris and redirect_uri not in application.redirect_uris:
+            return render(
+                request,
+                "api/oauth_error.html",
+                {"error": "Invalid application redirect URI"},
+                status=401,
+            )
+
         # Get the identity
         identity = self.request.user.identities.get(pk=post_data["identity"])
 
