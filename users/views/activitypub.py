@@ -277,6 +277,15 @@ class Inbox(FederatedView):
             except (KeyError, TypeError):
                 logger.warning("Inbox error: Malformed LD signature block")
                 return HttpResponseBadRequest("Malformed LD signature")
+            if creator != document["actor"]:
+                logger.warning(
+                    "Inbox error: LD signature creator %s does not match actor %s",
+                    creator,
+                    document["actor"],
+                )
+                return HttpResponseUnauthorized(
+                    "Signature creator does not match actor"
+                )
             try:
                 creator_identity = Identity.by_actor_uri(
                     creator, create=True, transient=True

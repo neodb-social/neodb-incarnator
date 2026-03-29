@@ -46,6 +46,13 @@ class InboxMessageStates(StateGraph):
 
             sig_data = deferred_sigs[sig_type]
             actor_uri = sig_data.get("actor_uri") or sig_data.get("creator_uri")
+            if sig_type == "ld_sig" and actor_uri != instance.message.get("actor"):
+                logger.warning(
+                    "Inbox: Deferred LD sig creator %s does not match actor %s",
+                    actor_uri,
+                    instance.message.get("actor"),
+                )
+                return False
             identity = Identity.by_actor_uri(actor_uri, create=True)
             if not identity.public_key:
                 try:

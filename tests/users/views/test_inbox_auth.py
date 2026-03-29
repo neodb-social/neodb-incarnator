@@ -272,6 +272,62 @@ def test_malformed_ld_signature_rejected(client, identity):
 
 
 @pytest.mark.django_db
+def test_ld_signature_creator_actor_mismatch_rejected(
+    client, identity, remote_identity, keypair
+):
+    """LD signature with creator != actor is rejected (actor spoofing)."""
+    remote_identity.public_key = keypair["public_key"]
+    remote_identity.public_key_id = keypair["public_key_id"]
+    remote_identity.save()
+
+    # Document claims to be from a different actor than the signer
+    victim_uri = "https://victim.test/users/alice"
+    Domain.objects.create(domain="victim.test", local=False, state="updated")
+    document = _make_document(actor_uri=victim_uri)
+    # Sign with remote_identity's key but creator doesn't match actor
+    signature_section = LDSignature.create_signature(
+        document,
+        keypair["private_key"],
+        f"{remote_identity.actor_uri}#main-key",
+    )
+    document["signature"] = signature_section
+
+    resp = _post_to_inbox(client, identity, document)
+    assert resp.status_code == 401
+    assert InboxMessage.objects.count() == 0
+
+
+@pytest.mark.django_db
+def test_deferred_ld_sig_creator_actor_mismatch_rejected(keypair):
+    """
+    Deferred LD sig verification fails when creator doesn't match actor.
+    """
+    domain = Domain.objects.create(domain="deferred.test", local=False, state="updated")
+    Identity.objects.create(
+        actor_uri="https://deferred.test/actor/",
+        domain=domain,
+        username="deferred",
+        local=False,
+        state="updated",
+        public_key=keypair["public_key"],
+    )
+
+    # Message actor differs from the LD sig creator
+    document = _make_document(actor_uri="https://victim.test/users/alice")
+    msg = InboxMessage.objects.create(
+        message=document,
+        metadata={
+            "ld_sig": {
+                "creator_uri": "https://deferred.test/actor/",
+            }
+        },
+    )
+
+    result = InboxMessageStates._verify_deferred(msg)
+    assert result is False
+
+
+@pytest.mark.django_db
 def test_internal_type_rejected(client, identity, remote_identity, keypair):
     """Internal message types are rejected even with valid signatures."""
     remote_identity.public_key = keypair["public_key"]
