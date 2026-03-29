@@ -110,16 +110,24 @@ def _clamp_quote_visibility(requested: int, quoted: int) -> int:
     return V.mentioned
 
 
-def _extract_quote_from_trailing_url(text: str) -> tuple["Post | None", str]:
+def _extract_quote_from_trailing_url(
+    text: str, identity: "Identity | None" = None
+) -> tuple["Post | None", str]:
     """
-    Detect a trailing URL in the status text that matches a known post.
+    Detect a trailing URL in the status text that matches a known post
+    visible to the given identity.
     Returns (quote_post, cleaned_text) if found, or (None, original_text).
     """
     match = re.search(r"(^|\n)(https?://\S+)\s*$", text)
     if not match:
         return None, text
     url = match.group(2)
-    post = Post.objects.filter(Q(object_uri=url) | Q(url=url)).first()
+    post = (
+        Post.objects.not_hidden()
+        .visible_to(identity, include_replies=True)
+        .filter(Q(object_uri=url) | Q(url=url))
+        .first()
+    )
     if not post:
         return None, text
     cleaned = text[: match.start(2)].rstrip("\n ")
@@ -152,14 +160,18 @@ def post_status(request, details: PostStatusSchema) -> schemas.Status:
     quote_post = None
     quote_id = details.quoted_status_id or details.quote_id
     if quote_id:
-        try:
-            quote_post = Post.objects.get(pk=quote_id)
-        except Post.DoesNotExist:
-            pass
+        quote_post = (
+            Post.objects.not_hidden()
+            .visible_to(request.identity, include_replies=True)
+            .filter(pk=quote_id)
+            .first()
+        )
     # If no explicit quote ID, detect a trailing URL that matches a known post
     status_text = details.status or ""
     if not quote_post and status_text:
-        quote_post, status_text = _extract_quote_from_trailing_url(status_text)
+        quote_post, status_text = _extract_quote_from_trailing_url(
+            status_text, request.identity
+        )
     # Enforce: quoting post visibility must not exceed quoted post visibility
     visibility = visibility_map[details.visibility]
     if quote_post:
@@ -456,6 +468,7 @@ def status_quotes(
     paginator = MastodonPaginator()
     pager: PaginationResult[Post] = paginator.paginate(
         Post.objects.not_hidden()
+        .visible_to(request.identity, include_replies=True)
         .filter(quote_url=post.object_uri)
         .select_related("author"),
         min_id=min_id,
