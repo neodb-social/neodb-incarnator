@@ -206,7 +206,7 @@ class Emoji(StatorModel):
     def as_html(self):
         if self.is_usable:
             return mark_safe(
-                f'<img src="{self.full_url().relative}" class="emoji" alt="Emoji {self.shortcode}">'
+                f'<img src="{self.full_url().relative}" class="emoji" alt=":{self.shortcode}:" title=":{self.shortcode}:">'
             )
         return self.fullcode
 
