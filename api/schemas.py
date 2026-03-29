@@ -169,6 +169,7 @@ class Status(Schema):
     in_reply_to_id: str | None = Field(...)
     in_reply_to_account_id: str | None = Field(...)
     reblog: Optional["Status"] = Field(...)
+    quote: dict | None = None
     poll: Poll | None = Field(...)
     card: None = Field(...)
     language: str | None = Field(...)
@@ -284,6 +285,7 @@ class Notification(Schema):
         "favourite",
         "poll",
         "update",
+        "quote",
         "admin.sign_up",
         "admin.report",
     ]

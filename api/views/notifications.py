@@ -16,6 +16,7 @@ NOTIFICATION_TYPES = {
     "mention": TimelineEvent.Types.mentioned,
     "follow": TimelineEvent.Types.followed,
     "follow_request": TimelineEvent.Types.follow_requested,
+    "quote": TimelineEvent.Types.quoted,
     "admin.sign_up": TimelineEvent.Types.identity_created,
 }
 

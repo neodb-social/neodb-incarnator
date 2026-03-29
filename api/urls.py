@@ -161,6 +161,7 @@ urlpatterns = [
     path("v1/statuses/<id>/unbookmark", statuses.unbookmark_status),
     path("v1/statuses/<id>/pin", statuses.pin_status),
     path("v1/statuses/<id>/unpin", statuses.unpin_status),
+    path("v1/statuses/<id>/quotes", statuses.status_quotes),
     # Tags
     path("v1/followed_tags", tags.followed_tags),
     path(

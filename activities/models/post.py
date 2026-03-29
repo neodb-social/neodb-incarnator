@@ -394,6 +394,9 @@ class Post(StatorModel):
     # (as otherwise we'd have to pull entire threads to use IDs)
     in_reply_to = models.CharField(max_length=500, blank=True, null=True, db_index=True)
 
+    # The Post this quotes, as an AP URI (FEP-044f)
+    quote_url = models.CharField(max_length=2048, blank=True, null=True, db_index=True)
+
     # The identities the post is directly to (who can see it if not public)
     to = models.ManyToManyField(
         "users.Identity",
@@ -593,6 +596,7 @@ class Post(StatorModel):
         sensitive: bool = False,
         visibility: int = Visibilities.public,
         reply_to: Optional["Post"] = None,
+        quote: Optional["Post"] = None,
         attachments: list | None = None,
         question: dict | None = None,
         language: str | None = None,
@@ -627,6 +631,7 @@ class Post(StatorModel):
                 visibility=visibility,
                 hashtags=hashtags,
                 in_reply_to=reply_to.object_uri if reply_to else None,
+                quote_url=quote.object_uri if quote else None,
                 language=language,
                 application=application,
             )
@@ -810,6 +815,32 @@ class Post(StatorModel):
             value["summary"] = self.summary
         if self.in_reply_to:
             value["inReplyTo"] = self.in_reply_to
+        if self.quote_url:
+            value["quote"] = self.quote_url
+            value["quoteUrl"] = self.quote_url
+            value["quoteUri"] = self.quote_url
+            value["_misskey_quote"] = self.quote_url
+            value["tag"].append(
+                {
+                    "type": "Link",
+                    "mediaType": (
+                        "application/ld+json;"
+                        ' profile="https://www.w3.org/'
+                        'ns/activitystreams"'
+                    ),
+                    "href": self.quote_url,
+                }
+            )
+        # Interaction policy: allow quoting of public/unlisted posts
+        if self.visibility in (
+            self.Visibilities.public,
+            self.Visibilities.unlisted,
+        ):
+            value["interactionPolicy"] = {
+                "canQuote": {
+                    "automaticApproval": ["as:Public"],
+                }
+            }
         if self.edited:
             value["updated"] = format_ld_date(self.edited)
         # Targeting
@@ -918,6 +949,15 @@ class Post(StatorModel):
             ):
                 targets.add(follower.source)
 
+        # If it quotes a post, include the quoted post's author
+        if self.quote_url:
+            quoted_post = (
+                Post.objects.filter(object_uri=self.quote_url)
+                .select_related("author")
+                .first()
+            )
+            if quoted_post:
+                targets.add(quoted_post.author)
         # If it's a reply, always include the original author if we know them
         reply_post = self.in_reply_to_post()
         if reply_post:
@@ -1058,6 +1098,39 @@ class Post(StatorModel):
             post.published = parse_ld_date(data.get("published")) or timezone.now()
             post.edited = parse_ld_date(data.get("updated"))
             post.in_reply_to = data.get("inReplyTo")
+            # Quote URL - check properties in priority order (FEP-044f)
+            post.quote_url = None
+            for key in ("quote", "_misskey_quote", "quoteUrl", "quoteUri"):
+                val = data.get(key)
+                if isinstance(val, str) and val:
+                    post.quote_url = val
+                    break
+                elif isinstance(val, dict):
+                    if val.get("type") == "Tombstone":
+                        break
+                    uri = val.get("id")
+                    if uri:
+                        post.quote_url = uri
+                    break
+            # FEP-e232 tag Link fallback
+            if not post.quote_url:
+                for tag in get_list(data, "tag"):
+                    if (
+                        tag.get("type") == "Link"
+                        and isinstance(tag.get("mediaType"), str)
+                        and tag["mediaType"].startswith("application/ld+json")
+                        and tag.get("href")
+                    ):
+                        post.quote_url = tag["href"]
+                        break
+            # Strip FEP-044f fallback quote-inline span from content
+            if post.quote_url:
+                post.content = re.sub(
+                    r'<span class="quote-inline">.*?</span>',
+                    "",
+                    post.content,
+                    flags=re.DOTALL,
+                )
             post.language = get_language(data) or ""
             # Mentions and hashtags
             post.hashtags = []
@@ -1298,6 +1371,80 @@ class Post(StatorModel):
             post.delete()
 
     @classmethod
+    def handle_quote_request_ap(cls, data):
+        """
+        Handles an incoming QuoteRequest (FEP-044f).
+        Auto-accepts for public/unlisted posts, rejects otherwise.
+        """
+        actor_uri = data.get("actor")
+        object_uri = data.get("object")
+        if not actor_uri or not object_uri:
+            return
+        if isinstance(object_uri, dict):
+            object_uri = object_uri.get("id")
+        if not object_uri:
+            return
+        try:
+            post = cls.by_object_uri(object_uri)
+        except cls.DoesNotExist:
+            return
+        if not post.local:
+            return
+        requesting_identity = Identity.by_actor_uri(actor_uri)
+        if not requesting_identity:
+            return
+        quoting_post_uri = None
+        instrument = data.get("instrument")
+        if isinstance(instrument, dict):
+            quoting_post_uri = instrument.get("id")
+        elif isinstance(instrument, str):
+            quoting_post_uri = instrument
+        if post.visibility in (
+            cls.Visibilities.public,
+            cls.Visibilities.unlisted,
+        ):
+            auth_id = Snowflake.generate_post()
+            authorization_uri = f"{post.object_uri}#quote-auth-{auth_id}"
+            accept_id = Snowflake.generate_post()
+            accept_data = {
+                "type": "Accept",
+                "id": f"{post.author.actor_uri}#accept-{accept_id}",
+                "actor": post.author.actor_uri,
+                "object": data.get("id", actor_uri),
+                "result": {
+                    "type": "QuoteAuthorization",
+                    "id": authorization_uri,
+                    "attributedTo": post.author.actor_uri,
+                    "interactingObject": quoting_post_uri or actor_uri,
+                    "interactionTarget": post.object_uri,
+                },
+            }
+            try:
+                post.author.signed_request(
+                    method="post",
+                    uri=requesting_identity.inbox_uri,
+                    body=canonicalise(accept_data),
+                )
+            except Exception as e:
+                logger.warning("Error sending QuoteAuthorization: %s", e)
+        else:
+            reject_id = Snowflake.generate_post()
+            reject_data = {
+                "type": "Reject",
+                "id": (f"{post.author.actor_uri}" f"#reject-{reject_id}"),
+                "actor": post.author.actor_uri,
+                "object": data.get("id", actor_uri),
+            }
+            try:
+                post.author.signed_request(
+                    method="post",
+                    uri=requesting_identity.inbox_uri,
+                    body=canonicalise(reject_data),
+                )
+            except Exception as e:
+                logger.warning("Error sending quote Reject: %s", e)
+
+    @classmethod
     def handle_fetch_internal(cls, data):
         """
         Handles an internal fetch-request inbox message
@@ -1390,6 +1537,7 @@ class Post(StatorModel):
                 str(reply_parent.author_id) if reply_parent else None
             ),
             "reblog": None,
+            "quote": None,
             "poll": self.type_data.to_mastodon_json(self, identity)
             if isinstance(self.type_data, QuestionData)
             else None,
@@ -1400,6 +1548,17 @@ class Post(StatorModel):
             if self.application
             else None,
         }
+        if self.quote_url:
+            quoted_post = (
+                Post.objects.filter(object_uri=self.quote_url)
+                .select_related("author")
+                .first()
+            )
+            if quoted_post:
+                value["quote"] = {
+                    "state": "accepted",
+                    "quoted_status": quoted_post.to_mastodon_json(identity=identity),
+                }
         if isinstance(self.type_data, dict) and "object" in self.type_data:
             value["ext_neodb"] = self.type_data["object"]
         if interactions:

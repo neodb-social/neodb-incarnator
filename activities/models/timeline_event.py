@@ -20,6 +20,7 @@ class TimelineEvent(models.Model):
         followed = "followed"
         follow_requested = "follow_requested"
         boosted = "boosted"  # Someone boosting one of our posts
+        quoted = "quoted"  # Someone quoting one of our posts
         announcement = "announcement"  # Server announcement
         identity_created = "identity_created"  # New identity created
 
@@ -30,6 +31,7 @@ class TimelineEvent(models.Model):
         Types.mentioned: "mention",
         Types.followed: "follow",
         Types.follow_requested: "follow_request",
+        Types.quoted: "quote",
         Types.identity_created: "admin.sign_up",
     }
 
@@ -155,6 +157,22 @@ class TimelineEvent(models.Model):
         )
         if created:
             identity.notify(PushType.mention, post.author, body=post.content_preview())
+        return event
+
+    @classmethod
+    def add_quoted(cls, identity, post):
+        """
+        Adds a quote notification when someone quotes one of our posts
+        """
+        event, created = cls.objects.get_or_create(
+            identity=identity,
+            type=cls.Types.quoted,
+            subject_post=post,
+            subject_identity=post.author,
+            defaults={"published": post.published or post.created},
+        )
+        if created:
+            identity.notify(PushType.quote, post.author, body=post.content_preview())
         return event
 
     @classmethod

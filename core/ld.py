@@ -537,8 +537,41 @@ schemas = {
                     "invisible": "litepub:invisible",
                     "directMessage": "litepub:directMessage",
                     "listMessage": {"@id": "litepub:listMessage", "@type": "@id"},
+                    "quote": {
+                        "@id": "https://w3id.org/fep/044f#quote",
+                        "@type": "@id",
+                    },
                     "quoteUrl": "as:quoteUrl",
                     "quoteUri": "fedibird:quoteUri",
+                    "_misskey_quote": "misskey:_misskey_quote",
+                    "quoteAuthorization": {
+                        "@id": "https://w3id.org/fep/044f#quoteAuthorization",
+                        "@type": "@id",
+                    },
+                    "QuoteAuthorization": "https://w3id.org/fep/044f#QuoteAuthorization",
+                    "QuoteRequest": "https://w3id.org/fep/044f#QuoteRequest",
+                    "gts": "https://gotosocial.org/ns#",
+                    "interactionPolicy": {
+                        "@id": "gts:interactionPolicy",
+                        "@type": "@id",
+                    },
+                    "canQuote": {"@id": "gts:canQuote", "@type": "@id"},
+                    "automaticApproval": {
+                        "@id": "gts:automaticApproval",
+                        "@type": "@id",
+                    },
+                    "manualApproval": {
+                        "@id": "gts:manualApproval",
+                        "@type": "@id",
+                    },
+                    "interactingObject": {
+                        "@id": "gts:interactingObject",
+                        "@type": "@id",
+                    },
+                    "interactionTarget": {
+                        "@id": "gts:interactionTarget",
+                        "@type": "@id",
+                    },
                     "oauthRegistrationEndpoint": {
                         "@id": "litepub:oauthRegistrationEndpoint",
                         "@type": "@id",
