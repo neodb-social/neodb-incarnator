@@ -1,3 +1,5 @@
+import mimetypes
+
 from django.core.files import File
 from django.shortcuts import get_object_or_404
 from hatchway import ApiError, QueryOrBody, api_view
@@ -53,8 +55,14 @@ def upload_media(
             state=PostAttachmentStates.fetched,
             author=request.identity,
         )
+        # Ensure filename has a proper extension so the web server
+        # serves it with the correct Content-Type header.
+        filename = file.name or "attachment"
+        if "." not in filename.rsplit("/", 1)[-1]:
+            ext = mimetypes.guess_extension(content_type) or ""
+            filename = filename + ext
         attachment.file.save(
-            file.name or "attachment",
+            filename,
             file,
         )
     attachment.save()
