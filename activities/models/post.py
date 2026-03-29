@@ -1566,6 +1566,8 @@ class Post(StatorModel):
                     "state": "accepted",
                     "quoted_status": quoted_post.to_mastodon_json(identity=identity),
                 }
+                value["quote_id"] = str(quoted_post.pk)
+                value["quoted_status_id"] = str(quoted_post.pk)
         if isinstance(self.type_data, dict) and "object" in self.type_data:
             value["ext_neodb"] = self.type_data["object"]
         if interactions:

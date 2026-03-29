@@ -170,6 +170,8 @@ class Status(Schema):
     in_reply_to_account_id: str | None = Field(...)
     reblog: Optional["Status"] = Field(...)
     quote: dict | None = None
+    quote_id: str | None = None
+    quoted_status_id: str | None = None
     poll: Poll | None = Field(...)
     card: None = Field(...)
     language: str | None = Field(...)

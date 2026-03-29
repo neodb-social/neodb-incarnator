@@ -1,6 +1,8 @@
+import re
 from datetime import timedelta
 from typing import Literal
 
+from django.db.models import Q
 from django.http import HttpRequest
 from django.shortcuts import get_object_or_404
 from django.utils import timezone
@@ -82,6 +84,22 @@ def post_for_id(request: HttpRequest, id: str) -> Post:
     return get_object_or_404(queryset, pk=id)
 
 
+def _extract_quote_from_trailing_url(text: str) -> tuple["Post | None", str]:
+    """
+    Detect a trailing URL in the status text that matches a known post.
+    Returns (quote_post, cleaned_text) if found, or (None, original_text).
+    """
+    match = re.search(r"(^|\n)(https?://\S+)\s*$", text)
+    if not match:
+        return None, text
+    url = match.group(2)
+    post = Post.objects.filter(Q(object_uri=url) | Q(url=url)).first()
+    if not post:
+        return None, text
+    cleaned = text[: match.start(2)].rstrip("\n ")
+    return post, cleaned
+
+
 @scope_required("write:statuses")
 @api_view.post
 def post_status(request, details: PostStatusSchema) -> schemas.Status:
@@ -112,9 +130,13 @@ def post_status(request, details: PostStatusSchema) -> schemas.Status:
             quote_post = Post.objects.get(pk=quote_id)
         except Post.DoesNotExist:
             pass
+    # If no explicit quote ID, detect a trailing URL that matches a known post
+    status_text = details.status or ""
+    if not quote_post and status_text:
+        quote_post, status_text = _extract_quote_from_trailing_url(status_text)
     post = Post.create_local(
         author=request.identity,
-        content=details.status or "",
+        content=status_text,
         summary=details.spoiler_text,
         sensitive=details.sensitive,
         visibility=visibility_map[details.visibility],
