@@ -89,6 +89,8 @@ def instance_info_v1(request) -> dict:
                 "features": [
                     "mastodon_api",
                     "quote_posting",
+                    "editing",
+                    "polls",
                 ],
             },
         },
@@ -183,6 +185,16 @@ def instance_info_v2(request) -> dict:
             ),
         },
         "rules": rules,
+        "pleroma": {
+            "metadata": {
+                "features": [
+                    "mastodon_api",
+                    "quote_posting",
+                    "editing",
+                    "polls",
+                ],
+            },
+        },
     }
 
 

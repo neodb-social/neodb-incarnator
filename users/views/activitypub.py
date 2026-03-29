@@ -107,12 +107,12 @@ class NodeInfo2(View):
             ).count()
             metadata = {
                 "nodeName": request.config.site_name,
-                "features": ["quote_posting"],
+                "features": ["quote_posting", "editing", "polls"],
             }
         else:
             local_identities = Identity.objects.filter(local=True).count()
             local_posts = Post.objects.filter(local=True).count()
-            metadata = {"features": ["quote_posting"]}
+            metadata = {"features": ["quote_posting", "editing", "polls"]}
         return JsonResponse(
             {
                 "version": "2.0",
