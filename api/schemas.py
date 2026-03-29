@@ -93,7 +93,7 @@ class MediaAttachment(Schema):
     id: str
     type: Literal["unknown", "image", "gifv", "video", "audio"]
     url: str
-    preview_url: str
+    preview_url: str | None = None
     remote_url: str | None = None
     meta: dict
     description: str | None = None

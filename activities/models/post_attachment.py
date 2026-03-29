@@ -149,26 +149,39 @@ class PostAttachment(StatorModel):
             type_ = "video"
         elif self.is_audio():
             type_ = "audio"
-        value = {
-            "id": str(self.pk),
-            "type": type_,
-            "url": self.full_url().absolute,
-            "preview_url": self.thumbnail_url().absolute,
-            "remote_url": None,
-            "meta": {
+        if type_ == "image":
+            meta = {
                 "focus": {
                     "x": self.focal_x or 0,
                     "y": self.focal_y or 0,
                 },
-            },
+            }
+            if self.width and self.height:
+                meta["original"] = {
+                    "width": self.width,
+                    "height": self.height,
+                    "size": f"{self.width}x{self.height}",
+                    "aspect": self.width / self.height,
+                }
+            preview_url = self.thumbnail_url().absolute
+        elif type_ in ("audio", "video"):
+            meta = {
+                "original": {},
+            }
+            if self.width and self.height:
+                meta["original"]["width"] = self.width
+                meta["original"]["height"] = self.height
+            preview_url = None
+        else:
+            meta = {}
+            preview_url = None
+        return {
+            "id": str(self.pk),
+            "type": type_,
+            "url": self.full_url().absolute,
+            "preview_url": preview_url,
+            "remote_url": None,
+            "meta": meta,
             "description": self.name,
             "blurhash": self.blurhash,
         }
-        if self.width and self.height:
-            value["meta"]["original"] = {
-                "width": self.width,
-                "height": self.height,
-                "size": f"{self.width}x{self.height}",
-                "aspect": self.width / self.height,
-            }
-        return value
