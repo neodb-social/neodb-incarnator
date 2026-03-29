@@ -230,6 +230,8 @@ class InboxMessageStates(StateGraph):
                             Hashtag.handle_remove_ap(instance.message)
                         case unknown:
                             PostInteraction.handle_remove_ap(instance.message)
+                case "quoterequest" | "https://w3id.org/fep/044f#quoterequest":
+                    Post.handle_quote_request_ap(instance.message)
                 case "move":
                     # We're ignoring moves for now
                     pass

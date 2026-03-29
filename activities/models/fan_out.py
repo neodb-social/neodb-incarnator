@@ -70,7 +70,7 @@ class FanOutStates(StateGraph):
         """
         Sends the fan-out to the right inbox.
         """
-        from activities.models import PostInteraction
+        from activities.models import Post, PostInteraction
 
         # Don't try to fan out to identities that are not fetched yet
         if not (instance.identity.local or instance.identity.inbox_uri):
@@ -119,6 +119,22 @@ class FanOutStates(StateGraph):
                         identity=instance.identity,
                         post=post,
                     )
+                # We might have been quoted
+                if post.quote_url:
+                    quoted_post = (
+                        Post.objects.filter(object_uri=post.quote_url)
+                        .only("pk", "author_id")
+                        .first()
+                    )
+                    if (
+                        quoted_post
+                        and quoted_post.author_id == instance.identity_id
+                        and instance.identity_id != post.author_id
+                    ):
+                        TimelineEvent.add_quoted(
+                            identity=instance.identity,
+                            post=post,
+                        )
 
                 # Handle group actor automatic boosting
                 if instance.identity.is_group:

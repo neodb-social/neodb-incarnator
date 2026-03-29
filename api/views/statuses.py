@@ -43,6 +43,7 @@ class PostStatusSchema(Schema):
 
     status: str | None = None
     in_reply_to_id: str | None = None
+    quoted_status_id: str | None = None
     sensitive: bool = False
     spoiler_text: str | None = None
     visibility: Literal["public", "unlisted", "private", "direct"] = "public"
@@ -103,6 +104,12 @@ def post_status(request, details: PostStatusSchema) -> schemas.Status:
             reply_post = Post.objects.get(pk=details.in_reply_to_id)
         except Post.DoesNotExist:
             pass
+    quote_post = None
+    if details.quoted_status_id:
+        try:
+            quote_post = Post.objects.get(pk=details.quoted_status_id)
+        except Post.DoesNotExist:
+            pass
     post = Post.create_local(
         author=request.identity,
         content=details.status or "",
@@ -110,6 +117,7 @@ def post_status(request, details: PostStatusSchema) -> schemas.Status:
         sensitive=details.sensitive,
         visibility=visibility_map[details.visibility],
         reply_to=reply_post,
+        quote=quote_post,
         attachments=attachments,
         question=details.poll.dict() if details.poll else None,
         language=details.language,
@@ -375,4 +383,42 @@ def unpin_status(request, id: str) -> schemas.Status:
     interactions = PostInteraction.get_post_interactions([post], request.identity)
     return schemas.Status.from_post(
         post, identity=request.identity, interactions=interactions
+    )
+
+
+@api_view.get
+def status_quotes(
+    request: HttpRequest,
+    id: str,
+    max_id: str | None = None,
+    since_id: str | None = None,
+    min_id: str | None = None,
+    limit: int = 20,
+) -> ApiResponse[list[schemas.Status]]:
+    """
+    View statuses that quote the given status.
+    """
+    post = post_for_id(request, id)
+    paginator = MastodonPaginator()
+    pager: PaginationResult[Post] = paginator.paginate(
+        Post.objects.not_hidden()
+        .filter(quote_url=post.object_uri)
+        .select_related("author"),
+        min_id=min_id,
+        max_id=max_id,
+        since_id=since_id,
+        limit=limit,
+    )
+    interactions = PostInteraction.get_post_interactions(
+        pager.results, request.identity
+    )
+    return PaginatingApiResponse(
+        [
+            schemas.Status.from_post(
+                quote_post, interactions=interactions, identity=request.identity
+            )
+            for quote_post in pager.results
+        ],
+        request=request,
+        include_params=["limit", "id"],
     )
