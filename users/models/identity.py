@@ -874,7 +874,8 @@ class Identity(StatorModel):
                 # hitting the webfinger URL on the domain we were given to handle
                 # incorrectly setup servers.
                 if response.status_code == 200 and response.content.strip():
-                    tree = etree.fromstring(response.content)
+                    parser = etree.XMLParser(resolve_entities=False, no_network=True)
+                    tree = etree.fromstring(response.content, parser=parser)
                     template = tree.xpath(
                         "string(.//*[local-name() = 'Link' and @rel='lrdd' and (not(@type) or @type='application/jrd+json')]/@template)"
                     )
