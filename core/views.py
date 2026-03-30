@@ -111,19 +111,12 @@ class FlatPage(TemplateView):
         }
 
 
-def custom_static_serve(request, *args, **keywords):
+def custom_static_serve(*args, **keywords):
     """
-    Serve media files. When behind nginx with X-Takahe-Accel support,
-    use X-Accel-Redirect for zero-copy serving with Range request support.
-    Falls back to Django's serve() for development.
+    Set the correct `Content-Type` header for static WebP images
+    since Django cannot guess the MIME type of WebP images.
     """
-    if request.headers.get("X-Takahe-Accel"):
-        path = keywords["path"]
-        response = HttpResponse()
-        response["X-Accel-Redirect"] = f"/protected-media/{path}"
-        del response["Content-Type"]  # let nginx determine from extension
-        return response
-    response = serve(request, *args, **keywords)
+    response = serve(*args, **keywords)
     if keywords["path"].endswith(".webp"):
         response.headers["Content-Type"] = "image/webp"
     return response
