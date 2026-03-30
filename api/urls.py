@@ -6,6 +6,7 @@ from api.views import (
     apps,
     blocks,
     bookmarks,
+    conversations,
     emoji,
     filters,
     follow_requests,
@@ -181,7 +182,10 @@ urlpatterns = [
     path("v1/timelines/public", timelines.public),
     path("v1/timelines/tag/<hashtag>", timelines.hashtag),
     path("v1/timelines/list/<list_id>", timelines.list_timeline),
-    path("v1/conversations", timelines.conversations),
+    # Conversations
+    path("v1/conversations", conversations.list_conversations),
+    path("v1/conversations/<id>/read", conversations.mark_conversation_read),
+    path("v1/conversations/<id>", conversations.delete_conversation),
     path("v1/favourites", timelines.favourites),
     # Trends
     path("v1/trends", trends.trends_tags),  # legacy trending API

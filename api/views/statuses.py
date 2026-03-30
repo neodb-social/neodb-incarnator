@@ -16,6 +16,7 @@ from activities.models import (
     TimelineEvent,
 )
 from activities.services import PostService
+from users.models import Identity
 from api import schemas
 from api.decorators import scope_required
 from api.pagination import MastodonPaginator, PaginatingApiResponse, PaginationResult

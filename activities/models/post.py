@@ -155,6 +155,7 @@ class PostStates(StateGraph):
         - Remove all bookmarks
         - Undo all interactions (so that remote follower of a local booster will unsee it from their timeline)
         - Fan out the deletion of local post (fanout of remote post deletion is not supported yet)
+        - Update conversation's last_post if needed
         """
         from users.models import Bookmark
         from .post_interaction import PostInteraction, PostInteractionStates
@@ -171,6 +172,19 @@ class PostStates(StateGraph):
             ),
             PostInteractionStates.undone,
         )
+        # Update conversation's last_post if this was the latest
+        if instance.conversation_id:
+            conv = instance.conversation
+            if conv.last_post_id == instance.pk:
+                next_post = (
+                    Post.objects.filter(conversation=conv)
+                    .exclude(pk=instance.pk)
+                    .not_hidden()
+                    .order_by("-id")
+                    .first()
+                )
+                conv.last_post = next_post
+                conv.save(update_fields=["last_post", "updated"])
         return cls.deleted_fanned_out
 
     @classmethod
@@ -396,6 +410,15 @@ class Post(StatorModel):
 
     # The Post this quotes, as an AP URI (FEP-044f)
     quote_url = models.CharField(max_length=2048, blank=True, null=True, db_index=True)
+
+    # The conversation this post belongs to (only for direct messages)
+    conversation = models.ForeignKey(
+        "activities.Conversation",
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name="posts",
+    )
 
     # The identities the post is directly to (who can see it if not public)
     to = models.ManyToManyField(
@@ -645,6 +668,11 @@ class Post(StatorModel):
                 post.type = question["type"]
                 post.type_data = PostTypeData(root=question).root
             post.save()
+            # Assign to conversation if this is a direct message
+            if visibility == cls.Visibilities.mentioned:
+                from activities.models.conversation import Conversation
+
+                Conversation.update_for_post(post)
             # Recalculate parent stats for replies
             if reply_to:
                 reply_to.calculate_stats()
@@ -1217,6 +1245,12 @@ class Post(StatorModel):
                 # if we don't commit the transaction here, there's a chance
                 # the parent fetch below goes into an infinite loop
                 post.save()
+
+            # Assign to conversation if this is a direct message
+            if post.visibility == Post.Visibilities.mentioned:
+                from activities.models.conversation import Conversation
+
+                Conversation.update_for_post(post)
 
             # Potentially schedule a fetch of the reply parent, and recalculate
             # its stats if it's here already.

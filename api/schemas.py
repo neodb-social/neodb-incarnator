@@ -275,6 +275,36 @@ class Conversation(Schema):
     accounts: list[Account]
     last_status: Status | None = Field(...)
 
+    @classmethod
+    def from_conversation(
+        cls,
+        conversation: "activities_models.Conversation",
+        identity: "users_models.Identity",
+    ) -> "Conversation":
+        from activities.models.conversation import ConversationMembership
+
+        try:
+            membership = ConversationMembership.objects.get(
+                conversation=conversation, identity=identity
+            )
+            unread = membership.unread
+        except ConversationMembership.DoesNotExist:
+            unread = False
+        other_accounts = [
+            Account.from_identity(p)
+            for p in conversation.participants.all()
+            if p.pk != identity.pk
+        ]
+        last_status = None
+        if conversation.last_post:
+            last_status = Status.from_post(conversation.last_post, identity=identity)
+        return cls(
+            id=str(conversation.pk),
+            unread=unread,
+            accounts=other_accounts,
+            last_status=last_status,
+        )
+
 
 class Notification(Schema):
     id: str

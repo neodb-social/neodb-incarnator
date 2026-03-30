@@ -170,6 +170,31 @@ class TimelineService:
             .order_by("-id")
         )
 
+    def conversations(self) -> models.QuerySet:
+        """Return conversations for the current identity, excluding dismissed ones."""
+        from activities.models.conversation import Conversation
+
+        return (
+            Conversation.objects.filter(
+                memberships__identity=self.identity,
+                memberships__dismissed=False,
+            )
+            .select_related(
+                "last_post",
+                "last_post__author",
+                "last_post__author__domain",
+            )
+            .prefetch_related(
+                "participants",
+                "participants__domain",
+                "last_post__attachments",
+                "last_post__mentions",
+                "last_post__mentions__domain",
+                "last_post__emojis",
+            )
+            .order_by("-id")
+        )
+
     def bookmarks(self) -> models.QuerySet[Post]:
         """
         Return all bookmarked posts for an identity

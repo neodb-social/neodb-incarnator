@@ -122,19 +122,6 @@ def hashtag(
     )
 
 
-@scope_required("read:conversations")
-@api_view.get
-def conversations(
-    request: HttpRequest,
-    max_id: str | None = None,
-    since_id: str | None = None,
-    min_id: str | None = None,
-    limit: int = 20,
-) -> list[schemas.Status]:
-    # We don't implement this yet
-    return []
-
-
 @scope_required("read:favourites")
 @api_view.get
 def favourites(
