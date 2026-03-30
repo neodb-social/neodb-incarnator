@@ -57,52 +57,6 @@ def blurhash_image(file) -> str:
     return blurhash.encode(file, 4, 4)
 
 
-def get_video_dimensions(file) -> tuple[int, int] | None:
-    """
-    Extract width and height from an MP4/MOV file by parsing the tkhd box.
-    Returns (width, height) or None if parsing fails.
-    """
-    import struct
-
-    try:
-        file.seek(0)
-        data = file.read(64 * 1024)  # read first 64KB, enough for headers
-        file.seek(0)
-        pos = 0
-        while pos < len(data) - 8:
-            size = struct.unpack(">I", data[pos : pos + 4])[0]
-            box_type = data[pos + 4 : pos + 8]
-            if size < 8:
-                break
-            if box_type in (b"moov", b"trak"):
-                # container boxes: descend into children
-                pos += 8
-                continue
-            if box_type == b"tkhd":
-                # tkhd layout (version 0):
-                #   ver+flags(4) creation(4) modification(4) track_id(4)
-                #   reserved(4) duration(4) reserved(8) layer(2)
-                #   alt_group(2) volume(2) reserved(2) matrix(36)
-                #   width(4, fixed 16.16) height(4, fixed 16.16)
-                h_start = pos + 8
-                version = data[h_start]
-                if version == 0:
-                    w_off = h_start + 76
-                elif version == 1:
-                    # v1 has 8-byte creation/modification/duration
-                    w_off = h_start + 88
-                else:
-                    return None
-                w = struct.unpack(">I", data[w_off : w_off + 4])[0] >> 16
-                h = struct.unpack(">I", data[w_off + 4 : w_off + 8])[0] >> 16
-                if w > 0 and h > 0:
-                    return w, h
-            pos += size
-    except Exception:
-        pass
-    return None
-
-
 def get_remote_file(
     url: str,
     *,
