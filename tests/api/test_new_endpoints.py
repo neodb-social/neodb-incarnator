@@ -77,9 +77,7 @@ def test_notifications_unread_count_with_notifications(
 
 
 @pytest.mark.django_db
-def test_notifications_unread_count_with_limit(
-    api_client, identity, other_identity
-):
+def test_notifications_unread_count_with_limit(api_client, identity, other_identity):
     for _ in range(5):
         TimelineEvent.objects.create(
             identity=identity,
@@ -101,16 +99,12 @@ def test_account_note_set(api_client, identity, other_identity):
     assert response.status_code == 200
     data = response.json()
     assert data["note"] == "This is my private note"
-    assert AccountNote.objects.filter(
-        source=identity, target=other_identity
-    ).exists()
+    assert AccountNote.objects.filter(source=identity, target=other_identity).exists()
 
 
 @pytest.mark.django_db
 def test_account_note_update(api_client, identity, other_identity):
-    AccountNote.objects.create(
-        source=identity, target=other_identity, note="Old note"
-    )
+    AccountNote.objects.create(source=identity, target=other_identity, note="Old note")
     response = api_client.post(
         f"/api/v1/accounts/{other_identity.pk}/note",
         content_type="application/json",
@@ -118,16 +112,15 @@ def test_account_note_update(api_client, identity, other_identity):
     )
     assert response.status_code == 200
     assert response.json()["note"] == "New note"
-    assert AccountNote.objects.get(
-        source=identity, target=other_identity
-    ).note == "New note"
+    assert (
+        AccountNote.objects.get(source=identity, target=other_identity).note
+        == "New note"
+    )
 
 
 @pytest.mark.django_db
 def test_account_note_clear(api_client, identity, other_identity):
-    AccountNote.objects.create(
-        source=identity, target=other_identity, note="My note"
-    )
+    AccountNote.objects.create(source=identity, target=other_identity, note="My note")
     response = api_client.post(
         f"/api/v1/accounts/{other_identity.pk}/note",
         content_type="application/json",
@@ -139,9 +132,7 @@ def test_account_note_clear(api_client, identity, other_identity):
 
 @pytest.mark.django_db
 def test_account_note_in_relationship(api_client, identity, other_identity):
-    AccountNote.objects.create(
-        source=identity, target=other_identity, note="My note"
-    )
+    AccountNote.objects.create(source=identity, target=other_identity, note="My note")
     response = api_client.get(
         f"/api/v1/accounts/relationships?id[]={other_identity.pk}"
     )
