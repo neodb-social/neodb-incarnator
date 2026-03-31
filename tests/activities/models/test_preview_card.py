@@ -132,6 +132,7 @@ def test_preview_card_create_defaults():
 # SSRF protection
 # ---------------------------------------------------------------------------
 
+
 def _mock_getaddrinfo(ip: str):
     """Returns a mock getaddrinfo result resolving to the given IP."""
     return [(socket.AF_INET, socket.SOCK_STREAM, 0, "", (ip, 80))]
@@ -182,6 +183,7 @@ def test_ssrf_allows_public_ip():
 # ---------------------------------------------------------------------------
 # handle_needs_fetch
 # ---------------------------------------------------------------------------
+
 
 @pytest.mark.django_db
 @pytest.mark.httpx_mock(
@@ -325,6 +327,7 @@ def test_to_mastodon_json_no_image(config_system):
 # _attach_preview_card integration
 # ---------------------------------------------------------------------------
 
+
 @pytest.mark.django_db
 def test_attach_preview_card_creates_and_links(identity, config_system):
     post = Post.create_local(
@@ -447,6 +450,7 @@ def test_post_to_mastodon_json_card_none_when_no_card(identity, config_system):
 # ---------------------------------------------------------------------------
 # Management command
 # ---------------------------------------------------------------------------
+
 
 @pytest.mark.django_db
 def test_fetch_preview_cards_command_creates_cards(identity, config_system):
