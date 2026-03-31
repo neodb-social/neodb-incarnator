@@ -162,6 +162,8 @@ urlpatterns = [
     # Search
     path("v1/search", search.search),
     path("v2/search", search.search),
+    # Scheduled statuses
+    path("v1/scheduled_statuses", statuses.scheduled_statuses),
     # Statuses
     path("v1/statuses", statuses.post_status),
     path("v1/statuses/<id>/context", statuses.status_context),

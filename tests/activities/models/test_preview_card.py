@@ -1,6 +1,19 @@
+import socket
+from io import StringIO
+from unittest.mock import patch
+
+import httpx
 import pytest
 
-from activities.models.preview_card import PreviewCard
+from activities.models import Post, PostStates
+from activities.models.post import _attach_preview_card
+from activities.models.preview_card import (
+    PreviewCard,
+    PreviewCardStates,
+    SSRFAttemptError,
+    _check_url_safety,
+)
+from django.core.management import call_command
 
 
 # ---------------------------------------------------------------------------
@@ -119,14 +132,6 @@ def test_preview_card_create_defaults():
 # SSRF protection
 # ---------------------------------------------------------------------------
 
-import socket
-from unittest.mock import patch
-
-import httpx
-
-from activities.models.preview_card import SSRFAttemptError, _check_url_safety
-
-
 def _mock_getaddrinfo(ip: str):
     """Returns a mock getaddrinfo result resolving to the given IP."""
     return [(socket.AF_INET, socket.SOCK_STREAM, 0, "", (ip, 80))]
@@ -177,9 +182,6 @@ def test_ssrf_allows_public_ip():
 # ---------------------------------------------------------------------------
 # handle_needs_fetch
 # ---------------------------------------------------------------------------
-
-from activities.models.preview_card import PreviewCardStates
-
 
 @pytest.mark.django_db
 @pytest.mark.httpx_mock(
@@ -323,10 +325,6 @@ def test_to_mastodon_json_no_image(config_system):
 # _attach_preview_card integration
 # ---------------------------------------------------------------------------
 
-from activities.models import Post, PostStates
-from activities.models.post import _attach_preview_card
-
-
 @pytest.mark.django_db
 def test_attach_preview_card_creates_and_links(identity, config_system):
     post = Post.create_local(
@@ -449,11 +447,6 @@ def test_post_to_mastodon_json_card_none_when_no_card(identity, config_system):
 # ---------------------------------------------------------------------------
 # Management command
 # ---------------------------------------------------------------------------
-
-from io import StringIO
-
-from django.core.management import call_command
-
 
 @pytest.mark.django_db
 def test_fetch_preview_cards_command_creates_cards(identity, config_system):

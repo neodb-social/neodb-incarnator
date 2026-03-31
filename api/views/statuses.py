@@ -514,3 +514,9 @@ def status_quotes(
         request=request,
         include_params=["limit", "id"],
     )
+
+
+@scope_required("read:statuses")
+@api_view.get
+def scheduled_statuses(request) -> list:
+    return []
