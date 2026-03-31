@@ -70,7 +70,7 @@ def public(
     if remote:
         queryset = queryset.filter(local=False)
     if only_media:
-        queryset = queryset.filter(attachments__id__isnull=True)
+        queryset = queryset.filter(attachments__id__isnull=False)
     # Grab a paginated result set of instances
     paginator = MastodonPaginator()
     pager: PaginationResult[Post] = paginator.paginate(
@@ -105,7 +105,7 @@ def hashtag(
     if local:
         queryset = queryset.filter(local=True)
     if only_media:
-        queryset = queryset.filter(attachments__id__isnull=True)
+        queryset = queryset.filter(attachments__id__isnull=False)
     # Grab a paginated result set of instances
     paginator = MastodonPaginator()
     pager: PaginationResult[Post] = paginator.paginate(

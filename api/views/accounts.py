@@ -296,7 +296,7 @@ def account_unblock(request, id: str) -> schemas.Relationship:
     return schemas.Relationship.from_identity_pair(identity, request.identity)
 
 
-@scope_required("write:blocks")
+@scope_required("write:mutes")
 @api_view.post
 def account_mute(
     request,
@@ -314,7 +314,7 @@ def account_mute(
     return schemas.Relationship.from_identity_pair(identity, request.identity)
 
 
-@scope_required("write:blocks")
+@scope_required("write:mutes")
 @api_view.post
 def account_unmute(request, id: str) -> schemas.Relationship:
     identity = get_object_or_404(Identity, pk=id)

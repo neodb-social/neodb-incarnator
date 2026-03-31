@@ -428,7 +428,7 @@ def unbookmark_status(request, id: str) -> schemas.Status:
     )
 
 
-@scope_required("write:statuses")
+@scope_required("write:mutes")
 @api_view.post
 def mute_status(request, id: str) -> schemas.Status:
     post = post_for_id(request, id)
@@ -440,7 +440,7 @@ def mute_status(request, id: str) -> schemas.Status:
     return status
 
 
-@scope_required("write:statuses")
+@scope_required("write:mutes")
 @api_view.post
 def unmute_status(request, id: str) -> schemas.Status:
     post = post_for_id(request, id)

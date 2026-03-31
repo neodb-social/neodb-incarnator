@@ -946,7 +946,7 @@ class Identity(StatorModel):
                     and link.get("rel") == "self"
                 ):
                     return link["href"], data["subject"]
-        except KeyError:
+        except (KeyError, AttributeError):
             # Server returning wrong payload structure
             pass
         return None, None
