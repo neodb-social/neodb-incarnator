@@ -1200,7 +1200,7 @@ class Identity(StatorModel):
         return {
             "id": str(self.pk),
             "username": self.username or "",
-            "url": self.absolute_profile_uri() or "",
+            "url": self.absolute_profile_uri() or self.actor_uri or "",
             "acct": self.handle or "",
         }
 
