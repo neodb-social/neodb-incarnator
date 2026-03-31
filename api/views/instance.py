@@ -14,6 +14,19 @@ from takahe.neodb import __version__ as __neodb_version__
 from users.models import Domain, Identity
 
 
+def _build_rules(policy_rules: str | None) -> list[dict]:
+    return [
+        {"id": str(i + 1), "text": s, "hint": ""}
+        for i, s in enumerate(
+            [
+                s.strip()
+                for s in (policy_rules or "").replace("\r", "").split("\n\n")
+                if s.strip()
+            ]
+        )
+    ]
+
+
 @api_view.get
 def instance_info_v1(request) -> dict:
     # The stats are expensive to calculate, so don't do it very often
@@ -28,18 +41,7 @@ def instance_info_v1(request) -> dict:
     admin_identity = (
         Identity.objects.filter(users__admin=True).order_by("created").first()
     )
-    rules = [
-        {"id": str(i + 1), "text": s, "hint": ""}
-        for i, s in enumerate(
-            [
-                s.strip()
-                for s in (request.config.policy_rules or "")
-                .replace("\r", "")
-                .split("\n\n")
-                if s.strip()
-            ]
-        )
-    ]
+    rules = _build_rules(request.config.policy_rules)
     return {
         "uri": request.headers.get("host", settings.SETUP.MAIN_DOMAIN),
         "title": request.config.site_name,
@@ -109,18 +111,7 @@ def instance_info_v2(request) -> dict:
     admin_identity = (
         Identity.objects.filter(users__admin=True).order_by("created").first()
     )
-    rules = [
-        {"id": str(i + 1), "text": s, "hint": ""}
-        for i, s in enumerate(
-            [
-                s.strip()
-                for s in (request.config.policy_rules or "")
-                .replace("\r", "")
-                .split("\n\n")
-                if s.strip()
-            ]
-        )
-    ]
+    rules = _build_rules(request.config.policy_rules)
     return {
         "domain": current_domain.domain,
         "title": Config.system.site_name,
@@ -258,3 +249,8 @@ def languages(request) -> list:
 def extended_description(request) -> dict:
     txt = markdown_it.MarkdownIt().render(request.config.site_about)
     return {"content": txt}
+
+
+@api_view.get
+def rules(request) -> list[dict]:
+    return _build_rules(request.config.policy_rules)

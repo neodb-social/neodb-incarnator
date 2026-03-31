@@ -428,6 +428,28 @@ def unbookmark_status(request, id: str) -> schemas.Status:
     )
 
 
+@scope_required("write:statuses")
+@api_view.post
+def mute_status(request, id: str) -> schemas.Status:
+    post = post_for_id(request, id)
+    interactions = PostInteraction.get_post_interactions([post], request.identity)
+    status = schemas.Status.from_post(
+        post, interactions=interactions, identity=request.identity
+    )
+    status.muted = True
+    return status
+
+
+@scope_required("write:statuses")
+@api_view.post
+def unmute_status(request, id: str) -> schemas.Status:
+    post = post_for_id(request, id)
+    interactions = PostInteraction.get_post_interactions([post], request.identity)
+    return schemas.Status.from_post(
+        post, interactions=interactions, identity=request.identity
+    )
+
+
 @scope_required("write:accounts")
 @api_view.post
 def pin_status(request, id: str) -> schemas.Status:

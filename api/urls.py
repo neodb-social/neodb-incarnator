@@ -14,6 +14,7 @@ from api.views import (
     lists,
     markers,
     media,
+    mutes,
     notifications,
     polls,
     preferences,
@@ -44,6 +45,7 @@ urlpatterns = [
     path("v1/accounts/<id>/unblock", accounts.account_unblock),
     path("v1/accounts/<id>/mute", accounts.account_mute),
     path("v1/accounts/<id>/unmute", accounts.account_unmute),
+    path("v1/accounts/<id>/note", accounts.account_note),
     path("v1/accounts/<id>/following", accounts.account_following),
     path("v1/accounts/<id>/followers", accounts.account_followers),
     path("v1/accounts/<id>/featured_tags", accounts.account_featured_tags),
@@ -56,6 +58,8 @@ urlpatterns = [
     path("v1/apps/verify_credentials", apps.verify_credentials),
     # Blocks
     path("v1/blocks", blocks.blocks),
+    # Mutes
+    path("v1/mutes", mutes.mutes),
     # Bookmarks
     path("v1/bookmarks", bookmarks.bookmarks),
     # Emoji
@@ -72,6 +76,7 @@ urlpatterns = [
     path("v1/instance/activity", instance.activity),
     path("v1/instance/peers", instance.peers),
     path("v1/instance/languages", instance.languages),
+    path("v1/instance/rules", instance.rules),
     path("v1/instance/extended_description", instance.extended_description),
     path("v2/instance", instance.instance_info_v2),
     # Lists
@@ -128,6 +133,7 @@ urlpatterns = [
     # Notifications
     path("v1/notifications", notifications.notifications),
     path("v1/notifications/clear", notifications.dismiss_notifications),
+    path("v1/notifications/unread_count", notifications.unread_count),
     path("v1/notifications/<id>", notifications.get_notification),
     path("v1/notifications/<id>/dismiss", notifications.dismiss_notification),
     # Polls
@@ -160,6 +166,8 @@ urlpatterns = [
     path("v1/statuses/<id>/reblogged_by", statuses.reblogged_by),
     path("v1/statuses/<id>/bookmark", statuses.bookmark_status),
     path("v1/statuses/<id>/unbookmark", statuses.unbookmark_status),
+    path("v1/statuses/<id>/mute", statuses.mute_status),
+    path("v1/statuses/<id>/unmute", statuses.unmute_status),
     path("v1/statuses/<id>/pin", statuses.pin_status),
     path("v1/statuses/<id>/unpin", statuses.unpin_status),
     path("v1/statuses/<id>/quotes", statuses.status_quotes),

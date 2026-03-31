@@ -79,6 +79,21 @@ def get_notification(
     return schemas.Notification.from_timeline_event(notification)
 
 
+@scope_required("read:notifications")
+@api_view.get
+def unread_count(request: HttpRequest) -> dict:
+    requested_types = set(request.GET.getlist("types[]"))
+    excluded_types = set(request.GET.getlist("exclude_types[]"))
+    if not requested_types:
+        requested_types = set(NOTIFICATION_TYPES.keys())
+    requested_types.difference_update(excluded_types)
+    queryset = TimelineService(request.identity).notifications(
+        [NOTIFICATION_TYPES[r] for r in requested_types if r in NOTIFICATION_TYPES]
+    )
+    limit = min(int(request.GET.get("limit", 1000)), 1000)
+    return {"count": min(queryset.count(), limit)}
+
+
 @scope_required("write:notifications")
 @api_view.post
 def dismiss_notifications(request: HttpRequest) -> dict:

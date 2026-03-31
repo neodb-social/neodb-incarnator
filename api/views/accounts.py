@@ -311,6 +311,20 @@ def account_unmute(request, id: str) -> schemas.Relationship:
     return schemas.Relationship.from_identity_pair(identity, request.identity)
 
 
+@scope_required("write:accounts")
+@api_view.post
+def account_note(
+    request,
+    id: str,
+    comment: QueryOrBody[str] = "",
+) -> schemas.Relationship:
+    identity = get_object_or_404(
+        Identity.objects.exclude(restriction=Identity.Restriction.blocked), pk=id
+    )
+    service = IdentityService(identity)
+    return schemas.Relationship(**service.set_note(request.identity, comment))
+
+
 @api_view.get
 def account_following(
     request: HttpRequest,
