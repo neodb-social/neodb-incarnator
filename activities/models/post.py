@@ -11,28 +11,6 @@ from urllib.parse import urlparse
 
 import httpx
 import urlman
-from deepmerge import always_merger
-from django.conf import settings
-from django.contrib.postgres.indexes import GinIndex
-from django.contrib.postgres.search import SearchVector
-from django.db import models, transaction
-from django.db.models.signals import post_delete, post_save
-from django.db.utils import IntegrityError
-from django.template import loader
-from django.template.defaultfilters import linebreaks_filter
-from django.utils import timezone
-from django.utils.html import strip_tags
-from pyld.jsonld import JsonLdError
-
-from activities.models.emoji import Emoji
-from activities.models.fan_out import FanOut
-from activities.models.hashtag import Hashtag
-from activities.models.post_types import (
-    PostTypeData,
-    PostTypeDataDecoder,
-    PostTypeDataEncoder,
-    QuestionData,
-)
 from core.exceptions import ActivityPubFormatError
 from core.html import ContentRenderer, FediverseHtmlParser
 from core.json import json_from_response
@@ -45,6 +23,18 @@ from core.ld import (
     parse_ld_date,
 )
 from core.snowflake import Snowflake
+from deepmerge import always_merger
+from django.conf import settings
+from django.contrib.postgres.indexes import GinIndex
+from django.contrib.postgres.search import SearchVector
+from django.db import models, transaction
+from django.db.models.signals import post_delete, post_save
+from django.db.utils import IntegrityError
+from django.template import loader
+from django.template.defaultfilters import linebreaks_filter
+from django.utils import timezone
+from django.utils.html import strip_tags
+from pyld.jsonld import JsonLdError
 from stator.exceptions import TryAgainLater
 from stator.models import State, StateField, StateGraph, StatorModel
 from users.models.block import Block
@@ -55,7 +45,46 @@ from users.models.inbox_message import InboxMessage
 from users.models.relay import Relay
 from users.models.system_actor import SystemActor
 
+from activities.models.emoji import Emoji
+from activities.models.fan_out import FanOut
+from activities.models.hashtag import Hashtag
+from activities.models.post_types import (
+    PostTypeData,
+    PostTypeDataDecoder,
+    PostTypeDataEncoder,
+    QuestionData,
+)
+
 logger = logging.getLogger(__name__)
+
+
+def _attach_preview_card(post_pk: int, content: str) -> None:
+    """
+    Extracts the first URL from post HTML content, strips tracking params,
+    and links the post to a PreviewCard (creating one if needed).
+    If no URL is found, unlinks any existing card.
+    Uses direct queryset updates to avoid interfering with Stator state saves.
+    """
+    from django.utils import timezone
+
+    from activities.models.preview_card import PreviewCard
+
+    # Extract first URL from HTML content
+    matches = FediverseHtmlParser.URL_REGEX.findall(content or "")
+    url = matches[0].lstrip("(") if matches else None
+
+    if not url or not url.startswith(("http://", "https://")):
+        Post.objects.filter(pk=post_pk).update(preview_card=None)
+        return
+
+    canonical_url = PreviewCard.strip_tracking_params(url)
+    if not canonical_url.startswith(("http://", "https://")):
+        Post.objects.filter(pk=post_pk).update(preview_card=None)
+        return
+
+    card, _ = PreviewCard.objects.get_or_create(url=canonical_url)
+    PreviewCard.objects.filter(pk=card.pk).update(last_referenced_at=timezone.now())
+    Post.objects.filter(pk=post_pk).update(preview_card_id=card.pk)
 
 
 class PostStates(StateGraph):
@@ -123,6 +152,7 @@ class PostStates(StateGraph):
         ):
             cls.targets_fan_out(instance, FanOut.Types.post)
         instance.ensure_hashtags()
+        _attach_preview_card(instance.pk, instance.content)
         return cls.fanned_out
 
     @classmethod
@@ -158,6 +188,7 @@ class PostStates(StateGraph):
         - Update conversation's last_post if needed
         """
         from users.models import Bookmark
+
         from .post_interaction import PostInteraction, PostInteractionStates
         from .timeline_event import TimelineEvent
 
@@ -194,6 +225,7 @@ class PostStates(StateGraph):
         """
         cls.targets_fan_out(instance, FanOut.Types.post_edited)
         instance.ensure_hashtags()
+        _attach_preview_card(instance.pk, instance.content)
         return cls.edited_fanned_out
 
 
@@ -363,6 +395,15 @@ class Post(StatorModel):
         on_delete=models.SET_NULL,
         blank=True,
         null=True,
+        related_name="posts",
+    )
+
+    # Preview card for the first URL in this post's content
+    preview_card = models.ForeignKey(
+        "activities.PreviewCard",
+        null=True,
+        blank=True,
+        on_delete=models.SET_NULL,
         related_name="posts",
     )
 
@@ -1582,7 +1623,11 @@ class Post(StatorModel):
             "poll": self.type_data.to_mastodon_json(self, identity)
             if isinstance(self.type_data, QuestionData)
             else None,
-            "card": None,
+            "card": (
+                self.preview_card.to_mastodon_json()
+                if self.preview_card_id and self.preview_card.state == "fetched"
+                else None
+            ),
             "text": self.safe_content_remote(),
             "edited_at": format_ld_date(self.edited) if self.edited else None,
             "application": self.application.to_mastodon_status_json()

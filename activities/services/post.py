@@ -37,6 +37,7 @@ class PostService:
             .select_related(
                 "author",
                 "author__domain",
+                "preview_card",
             )
         )
         if exclude_threshold is not None:

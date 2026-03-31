@@ -150,6 +150,23 @@ class StatusApplication(Schema):
     website: str | None
 
 
+class PreviewCard(Schema):
+    url: str
+    title: str
+    description: str
+    type: Literal["link", "photo", "video", "rich"]
+    author_name: str
+    author_url: str
+    provider_name: str
+    provider_url: str
+    html: str
+    width: int
+    height: int
+    image: str | None
+    embed_url: str
+    blurhash: str | None
+
+
 class Status(Schema):
     id: str
     uri: str
@@ -174,7 +191,7 @@ class Status(Schema):
     quote_id: str | None = None
     quoted_status_id: str | None = None
     poll: Poll | None = Field(...)
-    card: None = Field(...)
+    card: PreviewCard | None = Field(...)
     language: str | None = Field(...)
     text: str | None = Field(...)
     edited_at: str | None = None

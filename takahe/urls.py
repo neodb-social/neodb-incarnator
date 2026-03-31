@@ -352,6 +352,11 @@ urlpatterns = [
         name="proxy_post_attachment",
     ),
     re_path(
+        r"^proxy/preview_card/(?P<card_id>[^/]+)/((?P<image_hash>[^/]+))?$",
+        mediaproxy.PreviewCardImageCacheView.as_view(),
+        name="proxy_preview_card",
+    ),
+    re_path(
         "^proxy/emoji/(?P<emoji_id>[^/]+)/((?P<image_hash>[^/]+))?$",
         mediaproxy.EmojiCacheView.as_view(),
         name="proxy_emoji",
