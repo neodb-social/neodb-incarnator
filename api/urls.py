@@ -1,4 +1,5 @@
 from django.urls import path
+from hatchway import methods
 
 from api.views import (
     accounts,
@@ -27,7 +28,6 @@ from api.views import (
     timelines,
     trends,
 )
-from hatchway import methods
 
 urlpatterns = [
     # Accounts
@@ -37,6 +37,7 @@ urlpatterns = [
     path("v1/accounts/familiar_followers", accounts.familiar_followers),
     path("v1/accounts/search", accounts.accounts_search),
     path("v1/accounts/lookup", accounts.lookup),
+    path("v1/accounts", accounts.accounts_by_ids),
     path("v1/accounts/<id>", accounts.account),
     path("v1/accounts/<id>/statuses", accounts.account_statuses),
     path("v1/accounts/<id>/follow", accounts.account_follow),
@@ -136,6 +137,13 @@ urlpatterns = [
     path("v1/notifications/unread_count", notifications.unread_count),
     path("v1/notifications/<id>", notifications.get_notification),
     path("v1/notifications/<id>/dismiss", notifications.dismiss_notification),
+    path(
+        "v2/notifications/policy",
+        methods(
+            get=notifications.get_notifications_policy,
+            patch=notifications.update_notifications_policy,
+        ),
+    ),
     # Polls
     path("v1/polls/<id>", polls.get_poll),
     path("v1/polls/<id>/votes", polls.vote_poll),

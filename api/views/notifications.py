@@ -1,12 +1,14 @@
-from django.http import Http404, HttpRequest
-from django.shortcuts import get_object_or_404
+import dataclasses
 
 from activities.models import PostInteraction, TimelineEvent
 from activities.services import TimelineService
+from django.http import Http404, HttpRequest
+from django.shortcuts import get_object_or_404
+from hatchway import ApiResponse, QueryOrBody, api_view
+
 from api import schemas
 from api.decorators import scope_required
 from api.pagination import MastodonPaginator, PaginatingApiResponse, PaginationResult
-from hatchway import ApiResponse, api_view
 
 # Types/exclude_types use weird syntax so we have to handle them manually
 NOTIFICATION_TYPES = {
@@ -118,3 +120,41 @@ def dismiss_notification(request: HttpRequest, id: str) -> dict:
     notification.save()
 
     return {}
+
+
+# NOTE: Policy values are persisted per identity but not yet enforced — notifications
+# are not actually filtered or dropped based on these settings. The summary counts
+# also always return 0 for the same reason.
+POLICY_VALUES = {"accept", "filter", "drop"}
+
+
+@scope_required("read:notifications")
+@api_view.get
+def get_notifications_policy(request: HttpRequest) -> schemas.NotificationPolicy:
+    return schemas.NotificationPolicy.from_identity(request.identity)
+
+
+@scope_required("write:notifications")
+@api_view.patch
+def update_notifications_policy(
+    request: HttpRequest,
+    for_not_following: QueryOrBody[str | None] = None,
+    for_not_followers: QueryOrBody[str | None] = None,
+    for_new_accounts: QueryOrBody[str | None] = None,
+    for_private_mentions: QueryOrBody[str | None] = None,
+    for_limited_accounts: QueryOrBody[str | None] = None,
+) -> schemas.NotificationPolicy:
+    mapping = {
+        "notification_policy_not_following": for_not_following,
+        "notification_policy_not_followers": for_not_followers,
+        "notification_policy_new_accounts": for_new_accounts,
+        "notification_policy_private_mentions": for_private_mentions,
+        "notification_policy_limited_accounts": for_limited_accounts,
+    }
+    update = {k: v for k, v in mapping.items() if v is not None and v in POLICY_VALUES}
+    if update:
+        request.identity.config_identity = dataclasses.replace(
+            request.identity.config_identity, **update
+        )
+        request.identity.save()
+    return schemas.NotificationPolicy.from_identity(request.identity)

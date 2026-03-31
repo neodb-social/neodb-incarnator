@@ -1,19 +1,19 @@
 from typing import Any
 
+from activities.models import Post, PostInteraction, PostInteractionStates
+from activities.services import SearchService
+from core.models import Config
 from django.core.files import File
 from django.http import HttpRequest
 from django.shortcuts import get_object_or_404
+from hatchway import ApiResponse, QueryOrBody, api_view
+from users.services import IdentityService
+from users.shortcuts import by_handle_or_404
 
-from activities.models import Post, PostInteraction, PostInteractionStates
-from activities.services import SearchService
 from api import schemas
 from api.decorators import scope_required
 from api.pagination import MastodonPaginator, PaginatingApiResponse, PaginationResult
-from core.models import Config
-from hatchway import ApiResponse, QueryOrBody, api_view
 from users.models import Identity, IdentityStates
-from users.services import IdentityService
-from users.shortcuts import by_handle_or_404
 
 
 @scope_required("read")
@@ -159,6 +159,18 @@ def lookup(request: HttpRequest, acct: str) -> schemas.Account:
     """
     identity = by_handle_or_404(request, handle=acct, local=False)
     return schemas.Account.from_identity(identity)
+
+
+@scope_required("read:accounts")
+@api_view.get
+def accounts_by_ids(request: HttpRequest) -> list[schemas.Account]:
+    ids = request.GET.getlist("id[]")
+    if not ids:
+        return []
+    identities = Identity.objects.filter(
+        pk__in=ids,
+    ).exclude(restriction=Identity.Restriction.blocked)
+    return [schemas.Account.from_identity(i) for i in identities]
 
 
 @scope_required("read:accounts")

@@ -1,11 +1,12 @@
 from typing import Literal, Optional, Union
 
 from activities import models as activities_models
-from api import models as api_models
 from core.html import FediverseHtmlParser
 from hatchway import Field, Schema
-from users import models as users_models
 from users.services import IdentityService
+
+from api import models as api_models
+from users import models as users_models
 
 
 class Application(Schema):
@@ -333,6 +334,35 @@ class Notification(Schema):
         interactions=None,
     ) -> "Notification":
         return cls(**event.to_mastodon_notification_json(interactions=interactions))
+
+
+class NotificationPolicySummary(Schema):
+    pending_requests_count: int
+    pending_notifications_count: int
+
+
+class NotificationPolicy(Schema):
+    for_not_following: Literal["accept", "filter", "drop"]
+    for_not_followers: Literal["accept", "filter", "drop"]
+    for_new_accounts: Literal["accept", "filter", "drop"]
+    for_private_mentions: Literal["accept", "filter", "drop"]
+    for_limited_accounts: Literal["accept", "filter", "drop"]
+    summary: NotificationPolicySummary
+
+    @classmethod
+    def from_identity(cls, identity) -> "NotificationPolicy":
+        cfg = identity.config_identity
+        return cls(
+            for_not_following=cfg.notification_policy_not_following,
+            for_not_followers=cfg.notification_policy_not_followers,
+            for_new_accounts=cfg.notification_policy_new_accounts,
+            for_private_mentions=cfg.notification_policy_private_mentions,
+            for_limited_accounts=cfg.notification_policy_limited_accounts,
+            summary=NotificationPolicySummary(
+                pending_requests_count=0,
+                pending_notifications_count=0,
+            ),
+        )
 
 
 class Tag(Schema):

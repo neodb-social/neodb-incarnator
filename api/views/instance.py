@@ -48,7 +48,7 @@ def instance_info_v1(request) -> dict:
         "short_description": "",
         "description": "",
         "email": "",
-        "version": f"neodb/{__neodb_version__}",
+        "version": f"4.0.4 (compatible; NeoDB {__neodb_version__})",
         "urls": {},
         "stats": stats,
         "thumbnail": request.config.site_banner,
@@ -74,6 +74,9 @@ def instance_info_v1(request) -> dict:
                 ],
                 "image_size_limit": (1024**2) * 10,
                 "image_matrix_limit": 2000 * 2000,
+                "video_size_limit": (1024**2) * 10,
+                "video_frame_rate_limit": 60,
+                "video_matrix_limit": 2000 * 2000,
             },
             "polls": {
                 "max_options": 4,
@@ -115,7 +118,7 @@ def instance_info_v2(request) -> dict:
     return {
         "domain": current_domain.domain,
         "title": Config.system.site_name,
-        "version": f"neodb/{__neodb_version__}",
+        "version": f"4.0.4 (compatible; NeoDB {__neodb_version__})",
         "source_url": "https://github.com/jointakahe/takahe",
         "description": "",
         "usage": {
@@ -149,7 +152,7 @@ def instance_info_v2(request) -> dict:
                 ],
                 "image_size_limit": (1024**2) * 10,
                 "image_matrix_limit": 2000 * 2000,
-                "video_size_limit": 0,
+                "video_size_limit": (1024**2) * 10,
                 "video_frame_rate_limit": 60,
                 "video_matrix_limit": 2000 * 2000,
             },
