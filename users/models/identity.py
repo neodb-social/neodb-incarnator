@@ -536,7 +536,7 @@ class Identity(StatorModel):
                     )
                 else:
                     return cls.objects.get(
-                        username__iexact=username,
+                        username=username,
                         domain_id=domain,
                     )
             except cls.DoesNotExist:
