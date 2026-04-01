@@ -104,7 +104,9 @@ class Command(BaseCommand):
                 shortcode = prefix + shortcode
 
                 if not re.match(r"^[a-z0-9_]+$", shortcode):
-                    self.stderr.write(f"  skip {filename}: invalid shortcode '{shortcode}'")
+                    self.stderr.write(
+                        f"  skip {filename}: invalid shortcode '{shortcode}'"
+                    )
                     skipped_bad += 1
                     continue
 
