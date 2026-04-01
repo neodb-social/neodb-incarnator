@@ -109,6 +109,32 @@ def test_valid_http_signature_accepted(client, identity, remote_identity, keypai
 
 
 @pytest.mark.django_db
+def test_http_sig_passes_invalid_ld_sig_ignored(
+    client, identity, remote_identity, keypair
+):
+    """
+    When HTTP signature is valid, an invalid LD signature is ignored.
+    Mastodon and other implementations attach LD signatures alongside HTTP
+    signatures; pyld/ruby-jsonld URDNA2015 differences mean the LD sig can
+    fail even on authentic messages. The HTTP sig alone is sufficient.
+    """
+    remote_identity.public_key = keypair["public_key"]
+    remote_identity.public_key_id = keypair["public_key_id"]
+    remote_identity.save()
+
+    document = _make_document(actor_uri=remote_identity.actor_uri)
+    document["signature"] = {
+        "type": "RsaSignature2017",
+        "creator": f"{remote_identity.actor_uri}#main-key",
+        "created": "2023-10-25T08:08:47.702Z",
+        "signatureValue": base64.b64encode(b"invalid_ld_sig").decode(),
+    }
+    resp = _sign_and_post(client, identity, document, keypair)
+    assert resp.status_code == 202
+    assert InboxMessage.objects.count() == 1
+
+
+@pytest.mark.django_db
 def test_invalid_http_signature_rejected(client, identity, remote_identity, keypair):
     """Messages with an invalid HTTP Signature (bad sig bytes) are rejected."""
     remote_identity.public_key = keypair["public_key"]

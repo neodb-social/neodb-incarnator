@@ -272,9 +272,15 @@ class Inbox(FederatedView):
                 logger.warning("Inbox error: Bad HTTP signature from %s", identity)
                 return HttpResponseUnauthorized("Bad signature")
 
-        # Validate LD Signature if present.
+        # Validate LD Signature if HTTP signature did not already verify the
+        # message. When a sender (e.g. Mastodon) includes both signatures,
+        # HTTP sig is the primary auth; LD sig is only needed when the HTTP
+        # signer differs from the document actor (relay forwarding) or when
+        # there is no HTTP sig at all. Checking LD sig against the already-
+        # canonicalised document also causes interop failures due to
+        # pyld/ruby-jsonld differences in URDNA2015 output.
         # https://docs.joinmastodon.org/spec/security/#ld
-        if ld_sig_present:
+        if ld_sig_present and not verified:
             try:
                 creator = urldefrag(document["signature"]["creator"]).url
             except (KeyError, TypeError):
