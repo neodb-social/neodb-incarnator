@@ -12,6 +12,7 @@ from urllib.parse import urlparse
 import httpx
 import urlman
 from core.exceptions import ActivityPubFormatError
+from core.signatures import LDSignature
 from core.html import ContentRenderer, FediverseHtmlParser
 from core.json import json_from_response
 from core.ld import (
@@ -134,6 +135,11 @@ class PostStates(StateGraph):
                 obj = canonicalise(post.to_delete_ap())
         if not obj:
             return
+        # Attach LD signature so relay recipients can verify the original author
+        # independently of the relay's HTTP signature.
+        obj["signature"] = LDSignature.create_signature(
+            obj, post.author.private_key, post.author.public_key_id
+        )
         for uri in relay_uris:
             try:
                 post.author.signed_request(method="post", uri=uri, body=obj)
