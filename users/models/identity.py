@@ -599,11 +599,9 @@ class Identity(StatorModel):
 
     @property
     def handle(self):
-        if self.username is None:
-            return "(unknown user)"
-        if self.domain_id:
-            return f"{self.username}@{self.domain_id}"
-        return f"{self.username}@(unknown server)"
+        u = self.username or "-invalid-user-"
+        d = self.domain_id or self.actor_domain or "domain.invalid"
+        return f"{u}@{d}"
 
     @property
     def uri_domain(self):
