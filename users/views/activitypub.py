@@ -162,11 +162,12 @@ class Inbox(FederatedView):
         # Reject bodies that are unfeasibly big
         if len(request.body) > settings.JSONLD_MAX_SIZE:
             return HttpResponseBadRequest("Payload size too large")
-        # Load the LD
+        # Load the LD. Keep the raw parsed JSON separately: LD signatures are
+        # computed over the original document structure, so verification must
+        # use raw_document rather than the canonicalised form.
         try:
-            document = canonicalise(
-                json.loads(request.body), include_security=True, outbound=False
-            )
+            raw_document = json.loads(request.body)
+            document = canonicalise(raw_document, include_security=True, outbound=False)
         except ValueError:
             logger.warning(
                 "Inbox error when parsing JSON to LDDocument: %s", request.body.decode()
@@ -222,63 +223,97 @@ class Inbox(FederatedView):
         http_sig_present = "Signature" in request.headers
         ld_sig_present = "signature" in document
         verified = False
+        relay_mode = False  # True when HTTP signer != document actor
+        relay_http_verified = False  # True when relay HTTP sig verified immediately
         metadata = {}
 
-        # Authenticate HTTP signature if present. An invalid signature
-        # (key available, sig doesn't match) is a hard rejection.
-        # For unknown actors without a key, pre-compute data for
-        # deferred verification.
+        # Authenticate HTTP signature if present. Parse keyId first to detect
+        # relay deliveries (where the HTTP signer differs from document["actor"]).
+        # An invalid signature is a hard rejection. For unknown signers without a
+        # cached key, pre-compute data for deferred verification.
         if http_sig_present:
             try:
-                if identity.public_key:
-                    HttpSignature.verify_request(
-                        request,
-                        identity.public_key,
-                    )
-                    verified = True
-                    logger.debug(
-                        "Inbox: %s from %s has good HTTP signature",
-                        document_type,
-                        identity,
-                    )
+                signature_details = HttpSignature.parse_signature(
+                    request.headers["signature"]
+                )
+            except VerificationFormatError as e:
+                logger.warning("Inbox error: Bad HTTP signature format: %s", e.args[0])
+                return HttpResponseBadRequest(e.args[0])
+
+            key_id_actor = urldefrag(signature_details["keyid"]).url
+            relay_mode = key_id_actor != document["actor"]
+            signer_identity = (
+                Identity.by_actor_uri(key_id_actor, create=True, transient=True)
+                if relay_mode
+                else identity
+            )
+
+            try:
+                if signer_identity.public_key:
+                    HttpSignature.verify_request(request, signer_identity.public_key)
+                    if relay_mode:
+                        relay_http_verified = True
+                        logger.debug(
+                            "Inbox: relay HTTP sig from %s ok for %s",
+                            signer_identity,
+                            identity,
+                        )
+                    else:
+                        verified = True
+                        logger.debug(
+                            "Inbox: %s from %s has good HTTP signature",
+                            document_type,
+                            identity,
+                        )
                 else:
-                    logger.info(
-                        "Inbox: New actor, no key available: %s",
-                        document["actor"],
-                    )
-                    # Pre-compute the signed cleartext and extract the raw
-                    # signature so we can verify later once the key is fetched.
+                    logger.info("Inbox: No key available for %s", key_id_actor)
+                    # Pre-compute signed cleartext for deferred verification.
                     if "digest" in request.headers:
                         expected_digest = HttpSignature.calculate_digest(request.body)
                         if request.headers["digest"] != expected_digest:
                             return HttpResponseBadRequest("Digest is incorrect")
-                    signature_details = HttpSignature.parse_signature(
-                        request.headers["signature"]
-                    )
                     headers_string = HttpSignature.headers_from_request(
-                        request, signature_details["headers"]
+                        request, signature_details["headers"], signature_details
                     )
-                    metadata["http_sig"] = {
-                        "actor_uri": document["actor"],
-                        "signature": base64.b64encode(
-                            signature_details["signature"]
-                        ).decode(),
-                        "headers_string": headers_string,
-                    }
+                    sig_b64 = base64.b64encode(signature_details["signature"]).decode()
+                    if relay_mode:
+                        metadata["relay_http_sig"] = {
+                            "relay_uri": key_id_actor,
+                            "signature": sig_b64,
+                            "headers_string": headers_string,
+                        }
+                    else:
+                        metadata["http_sig"] = {
+                            "actor_uri": document["actor"],
+                            "signature": sig_b64,
+                            "headers_string": headers_string,
+                        }
             except VerificationFormatError as e:
                 logger.warning("Inbox error: Bad HTTP signature format: %s", e.args[0])
                 return HttpResponseBadRequest(e.args[0])
             except VerificationError:
-                logger.warning("Inbox error: Bad HTTP signature from %s", identity)
+                logger.warning(
+                    "Inbox error: Bad HTTP signature from %s", signer_identity
+                )
+                # TODO: stale-key retry missing. This method only fetches when the key
+                # is absent. If the key IS present but stale (remote actor rotated keys
+                # after we cached them), deferred verification will fail permanently.
                 return HttpResponseUnauthorized("Bad signature")
 
-        # Validate LD Signature if HTTP signature did not already verify the
-        # message. When a sender (e.g. Mastodon) includes both signatures,
-        # HTTP sig is the primary auth; LD sig is only needed when the HTTP
-        # signer differs from the document actor (relay forwarding) or when
-        # there is no HTTP sig at all. Checking LD sig against the already-
-        # canonicalised document also causes interop failures due to
-        # pyld/ruby-jsonld differences in URDNA2015 output.
+            # Relay deliveries must carry an LD signature from the document actor
+            # so the true author can be authenticated independently of the relay.
+            if relay_mode and not ld_sig_present:
+                logger.warning(
+                    "Inbox error: Relay from %s missing LD signature", signer_identity
+                )
+                return HttpResponseUnauthorized("Relay requires LD signature")
+
+        # Validate LD Signature when HTTP sig did not already verify the message
+        # (direct delivery), or always for relay where LD sig authenticates the
+        # document actor independently of the relay.
+        # Note: direct delivery with valid HTTP sig skips this block entirely —
+        # matching Mastodon's behaviour and avoiding pyld/ruby-jsonld URDNA2015
+        # interop failures.
         # https://docs.joinmastodon.org/spec/security/#ld
         if ld_sig_present and not verified:
             try:
@@ -300,8 +335,15 @@ class Inbox(FederatedView):
                     creator, create=True, transient=True
                 )
                 if creator_identity.public_key:
-                    LDSignature.verify_signature(document, creator_identity.public_key)
-                    verified = True
+                    # Verify against raw_document (original structure as signed),
+                    # not the canonicalized form which may differ in N-Quads output.
+                    LDSignature.verify_signature(
+                        raw_document, creator_identity.public_key
+                    )
+                    # For relay: only mark fully verified when relay HTTP was also
+                    # confirmed immediately (not deferred).
+                    if not relay_mode or relay_http_verified:
+                        verified = True
                     logger.debug(
                         "Inbox: %s from %s has good LD signature",
                         document["type"],
@@ -309,10 +351,11 @@ class Inbox(FederatedView):
                     )
                 else:
                     logger.info("Inbox: New actor, no key available: %s", creator)
-                    # LD signature data is already in the document; just
-                    # record the creator URI for deferred verification.
+                    # Store raw_document so deferred verification can also use the
+                    # original structure rather than the canonicalized message.
                     metadata["ld_sig"] = {
                         "creator_uri": creator,
+                        "raw_document": raw_document,
                     }
             except VerificationFormatError as e:
                 logger.warning("Inbox error: Bad LD signature format: %s", e.args[0])

@@ -26,6 +26,25 @@ class InboxMessageStates(StateGraph):
     received.transitions_to(errored)
 
     @classmethod
+    def _ensure_key(cls, identity) -> bool:
+        """
+        Fetch the actor if its public key is not yet cached.
+        Returns True if a key is available after the attempt.
+
+        TODO: stale-key retry missing. This method only fetches when the key
+        is absent. If the key IS present but stale (remote actor rotated keys
+        after we cached them), deferred verification will fail permanently.
+
+        """
+        if identity.public_key:
+            return True
+        try:
+            identity.fetch_actor()
+        except Exception:
+            pass
+        return bool(identity.public_key)
+
+    @classmethod
     def _verify_deferred(cls, instance: "InboxMessage") -> bool | None:
         """
         Verify signatures that were deferred because the actor's public
@@ -33,6 +52,11 @@ class InboxMessageStates(StateGraph):
 
         Returns True if verified, False if verification failed (bad sig),
         or None if keys are still unavailable (should retry later).
+
+        Sig types processed in order:
+          relay_http_sig — relay HTTP sig; on success, remove and fall through to ld_sig
+          http_sig       — direct-delivery HTTP sig; on success, return True
+          ld_sig         — LD sig; on success, return True
         """
         from users.models import Identity  # avoid circular import
 
@@ -40,12 +64,17 @@ class InboxMessageStates(StateGraph):
         if not deferred_sigs:
             return False
 
-        for sig_type in ["http_sig", "ld_sig"]:
+        for sig_type in ["relay_http_sig", "http_sig", "ld_sig"]:
             if sig_type not in deferred_sigs:
                 continue
 
             sig_data = deferred_sigs[sig_type]
-            actor_uri = sig_data.get("actor_uri") or sig_data.get("creator_uri")
+            actor_uri = (
+                sig_data.get("relay_uri")
+                or sig_data.get("actor_uri")
+                or sig_data.get("creator_uri")
+            )
+
             if sig_type == "ld_sig" and actor_uri != instance.message.get("actor"):
                 logger.warning(
                     "Inbox: Deferred LD sig creator %s does not match actor %s",
@@ -53,27 +82,21 @@ class InboxMessageStates(StateGraph):
                     instance.message.get("actor"),
                 )
                 return False
-            identity = Identity.by_actor_uri(actor_uri, create=True)
-            if not identity.public_key:
-                try:
-                    if not identity.fetch_actor():
-                        continue  # fetch failed, try next sig type
-                except Exception:
-                    continue
 
-            if not identity.public_key:
-                continue
+            identity = Identity.by_actor_uri(actor_uri, create=True)
+            if not cls._ensure_key(identity):
+                continue  # key still unavailable; retry later
 
             try:
-                if sig_type == "http_sig":
+                if sig_type == "ld_sig":
+                    # Prefer raw_document if stored; fall back to canonicalized
+                    # instance.message for older deferred entries.
+                    ld_doc = sig_data.get("raw_document") or instance.message
+                    LDSignature.verify_signature(ld_doc, identity.public_key)
+                else:
                     HttpSignature.verify_signature(
                         base64.b64decode(sig_data["signature"]),
                         sig_data["headers_string"],
-                        identity.public_key,
-                    )
-                else:
-                    LDSignature.verify_signature(
-                        instance.message,
                         identity.public_key,
                     )
                 logger.debug(
@@ -81,7 +104,6 @@ class InboxMessageStates(StateGraph):
                     sig_type,
                     actor_uri,
                 )
-                return True
             except (VerificationError, VerificationFormatError):
                 logger.warning(
                     "Inbox: Deferred %s verification failed for %s",
@@ -89,6 +111,21 @@ class InboxMessageStates(StateGraph):
                     actor_uri,
                 )
                 return False
+
+            # relay_http_sig verified: remove it and fall through to ld_sig.
+            # ld_sig must still pass before the message is accepted.
+            if sig_type == "relay_http_sig":
+                deferred_sigs = {
+                    k: v for k, v in deferred_sigs.items() if k != "relay_http_sig"
+                }
+                InboxMessage.objects.filter(pk=instance.pk).update(
+                    metadata=deferred_sigs or None
+                )
+                if not deferred_sigs:
+                    return True  # LD sig was verified at inbox time
+                continue
+
+            return True
 
         # No signature could be verified yet (keys still unavailable)
         return None
