@@ -38,11 +38,25 @@ class TimelineService:
         )
 
     def home(self) -> models.QuerySet[TimelineEvent]:
+        exclusive_member_ids = Identity.objects.filter(
+            in_lists__identity=self.identity,
+            in_lists__exclusive=True,
+        ).values("id")
         return (
             self.event_queryset()
             .filter(
                 identity=self.identity,
                 type__in=[TimelineEvent.Types.post, TimelineEvent.Types.boost],
+            )
+            .exclude(
+                models.Q(
+                    type=TimelineEvent.Types.post,
+                    subject_post__author_id__in=exclusive_member_ids,
+                )
+                | models.Q(
+                    type=TimelineEvent.Types.boost,
+                    subject_identity_id__in=exclusive_member_ids,
+                )
             )
             .order_by("-created")
         )

@@ -294,7 +294,9 @@ def test_group_actor_unboost_with_timeline_check(
 
 
 @pytest.mark.django_db
-def test_group_actor_announce_includes_followers_cc(identity, group_identity, config_system):
+def test_group_actor_announce_includes_followers_cc(
+    identity, group_identity, config_system
+):
     """Test that a group actor's boost Announce includes its followers collection in cc"""
     group_identity.ensure_uris()
     group_identity.save()
@@ -321,7 +323,7 @@ def test_group_actor_announce_includes_followers_cc(identity, group_identity, co
 @pytest.mark.django_db
 def test_non_group_actor_announce_has_no_cc(identity, config_system):
     """Test that a regular (non-group) user's boost Announce does not add followers cc"""
-    post = Post.create_local(
+    Post.create_local(
         author=identity,
         content="<p>Test post</p>",
     )
