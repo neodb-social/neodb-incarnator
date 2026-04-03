@@ -338,6 +338,8 @@ class PostInteraction(StatorModel):
                 "object": self.post.object_uri,
                 "to": "as:Public",
             }
+            if self.identity.is_group and self.identity.followers_uri:
+                value["cc"] = [self.identity.followers_uri]
         elif self.type == self.Types.like:
             value = {
                 "type": "Like",

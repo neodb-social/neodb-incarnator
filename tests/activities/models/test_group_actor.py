@@ -291,3 +291,54 @@ def test_group_actor_unboost_with_timeline_check(
     # Verify the boost is now undone since post is not in timeline
     boost.refresh_from_db()
     assert boost.state == PostInteractionStates.undone
+
+
+@pytest.mark.django_db
+def test_group_actor_announce_includes_followers_cc(identity, group_identity, config_system):
+    """Test that a group actor's boost Announce includes its followers collection in cc"""
+    group_identity.ensure_uris()
+    group_identity.save()
+
+    post = Post.create_local(
+        author=identity,
+        content="<p>Test post</p>",
+    )
+
+    boost = PostInteraction.objects.create(
+        identity=group_identity,
+        post=post,
+        type=PostInteraction.Types.boost,
+        published=timezone.now(),
+    )
+
+    ap = boost.to_ap()
+
+    assert ap["type"] == "Announce"
+    assert "cc" in ap
+    assert group_identity.followers_uri in ap["cc"]
+
+
+@pytest.mark.django_db
+def test_non_group_actor_announce_has_no_cc(identity, config_system):
+    """Test that a regular (non-group) user's boost Announce does not add followers cc"""
+    post = Post.create_local(
+        author=identity,
+        content="<p>Test post</p>",
+    )
+
+    other_post = Post.create_local(
+        author=identity,
+        content="<p>Another post</p>",
+    )
+
+    boost = PostInteraction.objects.create(
+        identity=identity,
+        post=other_post,
+        type=PostInteraction.Types.boost,
+        published=timezone.now(),
+    )
+
+    ap = boost.to_ap()
+
+    assert ap["type"] == "Announce"
+    assert "cc" not in ap
