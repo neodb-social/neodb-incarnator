@@ -946,8 +946,8 @@ class Post(StatorModel):
         # Attachments
         for attachment in self.attachments.all():
             value["attachment"].append(attachment.to_ap())
-        # Replies collection (only for local posts)
-        if self.local:
+        # Replies collection (only for local posts with a URI)
+        if self.local and self.object_uri:
             replies_uri = self.object_uri + "replies/"
             replies_count = self.stats.get("replies", 0) if self.stats else 0
             value["replies"] = {
