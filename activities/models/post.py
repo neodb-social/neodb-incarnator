@@ -1662,7 +1662,9 @@ class Post(StatorModel):
             uri = (
                 item
                 if isinstance(item, str)
-                else item.get("id") if isinstance(item, dict) else None
+                else item.get("id")
+                if isinstance(item, dict)
+                else None
             )
             if not uri or "://" not in uri:
                 continue

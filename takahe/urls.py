@@ -291,7 +291,9 @@ urlpatterns = [
     # Posts
     path("@<handle>/compose/", compose.Compose.as_view(), name="compose"),
     path("@<handle>/posts/<int:post_id>/", posts.Individual.as_view()),
-    path("@<handle>/posts/<int:post_id>/replies/", posts.PostRepliesCollection.as_view()),
+    path(
+        "@<handle>/posts/<int:post_id>/replies/", posts.PostRepliesCollection.as_view()
+    ),
     # Authentication
     path("auth/login/", auth.Login.as_view(), name="login"),
     path("auth/logout/", auth.Logout.as_view(), name="logout"),

@@ -61,9 +61,7 @@ def test_ensure_object_uri_respects_depth_limit():
     initial_count = InboxMessage.objects.count()
 
     # Depth within limit should create a message
-    Post.ensure_object_uri(
-        "https://remote.test/posts/shallow", reason="test", depth=0
-    )
+    Post.ensure_object_uri("https://remote.test/posts/shallow", reason="test", depth=0)
     assert InboxMessage.objects.count() == initial_count + 1
 
     # Depth at MAX_ANCESTOR_FETCH_DEPTH - 1 should still work
@@ -180,9 +178,7 @@ def test_handle_fetch_replies(httpx_mock, config_system, settings):
         }
     )
 
-    fetch_post_msgs = InboxMessage.objects.filter(
-        message__object__type="FetchPost"
-    )
+    fetch_post_msgs = InboxMessage.objects.filter(message__object__type="FetchPost")
     fetched_uris = {msg.message["object"]["object"] for msg in fetch_post_msgs}
     assert "https://remote.test/posts/reply-a" in fetched_uris
     assert "https://remote.test/posts/reply-b" in fetched_uris
