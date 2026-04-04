@@ -946,6 +946,31 @@ class Post(StatorModel):
         # Attachments
         for attachment in self.attachments.all():
             value["attachment"].append(attachment.to_ap())
+        # Replies collection (only for local posts)
+        if self.local:
+            replies_uri = self.object_uri + "replies/"
+            replies_count = self.stats.get("replies", 0) if self.stats else 0
+            value["replies"] = {
+                "id": replies_uri,
+                "type": "Collection",
+                "totalItems": replies_count,
+                "first": {
+                    "type": "CollectionPage",
+                    "partOf": replies_uri,
+                    "items": list(
+                        Post.objects.filter(
+                            in_reply_to=self.object_uri,
+                            visibility__in=[
+                                Post.Visibilities.public,
+                                Post.Visibilities.unlisted,
+                            ],
+                        )
+                        .not_hidden()
+                        .order_by("published")
+                        .values_list("object_uri", flat=True)[:50]
+                    ),
+                },
+            }
         # Remove fields if they're empty
         for field in ["to", "cc", "tag", "attachment"]:
             if not value[field]:
