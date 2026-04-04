@@ -1349,6 +1349,22 @@ class Post(StatorModel):
                 settings.NEODB_MQ.enqueue(
                     "takahe.ap_handlers.post_fetched", post.pk, data
                 )
+            # If the post has a replies collection, queue a fetch of the replies
+            replies = data.get("replies")
+            if replies and not post.local:
+                replies_uri = None
+                if isinstance(replies, str):
+                    replies_uri = replies
+                elif isinstance(replies, dict):
+                    replies_uri = replies.get("id")
+                if replies_uri and "://" in replies_uri:
+                    InboxMessage.create_internal(
+                        {
+                            "type": "FetchReplies",
+                            "object": replies_uri,
+                            "post_uri": post.object_uri,
+                        }
+                    )
         return post
 
     @classmethod
@@ -1594,6 +1610,67 @@ class Post(StatorModel):
                 cls.by_object_uri(uri, fetch=True, fetch_depth=depth)
         except (cls.DoesNotExist, KeyError):
             pass
+
+    MAX_FETCH_REPLIES = 50
+
+    @classmethod
+    def handle_fetch_replies(cls, data):
+        """
+        Fetches a remote replies collection and queues FetchPost for each
+        reply URI not already in the local database.
+        """
+        replies_uri = data.get("object")
+        if not replies_uri or "://" not in replies_uri:
+            return
+
+        try:
+            response = SystemActor().signed_request(method="get", uri=replies_uri)
+        except (httpx.HTTPError, ssl.SSLCertVerificationError, ValueError):
+            logger.warning("Failed to fetch replies collection: %s", replies_uri)
+            return
+
+        if response.status_code >= 400:
+            logger.warning(
+                "Error fetching replies collection %s: %d",
+                replies_uri,
+                response.status_code,
+            )
+            return
+
+        try:
+            collection = json_from_response(response)
+        except (ValueError, KeyError):
+            logger.warning("Invalid JSON from replies collection: %s", replies_uri)
+            return
+
+        # Extract items from the first page of the Collection
+        items: list = []
+        first = collection.get("first")
+        if isinstance(first, dict):
+            items = first.get("items") or first.get("orderedItems") or []
+        elif isinstance(first, str):
+            # first is a URL; for simplicity, fall back to top-level items
+            items = collection.get("items") or collection.get("orderedItems") or []
+        else:
+            items = collection.get("items") or collection.get("orderedItems") or []
+
+        # Queue a FetchPost for each URI we don't already have
+        count = 0
+        for item in items:
+            if count >= cls.MAX_FETCH_REPLIES:
+                break
+            uri = (
+                item
+                if isinstance(item, str)
+                else item.get("id") if isinstance(item, dict) else None
+            )
+            if not uri or "://" not in uri:
+                continue
+            try:
+                cls.ensure_object_uri(uri, reason=data.get("post_uri"))
+                count += 1
+            except ValueError:
+                continue
 
     ### OpenGraph API ###
 
