@@ -5,9 +5,10 @@ from activities.models import Post
 
 @pytest.fixture(autouse=True)
 def _enable_federation(settings):
+    original = settings.SETUP.NO_FEDERATION
     settings.SETUP.NO_FEDERATION = False
     yield
-    settings.SETUP.NO_FEDERATION = True
+    settings.SETUP.NO_FEDERATION = original
 
 
 @pytest.mark.django_db
