@@ -10,6 +10,7 @@ are:
 These fields carry journal piece metadata (ShelfMember Status, Review, Rating,
 Note, Comment) between NeoDB instances.
 """
+
 import pytest
 
 from activities.models import Post
@@ -315,9 +316,7 @@ def test_by_ap_with_review_related_with(remote_identity: Identity):
 @pytest.mark.django_db
 def test_by_ap_with_note_related_with_preserves_progress(remote_identity: Identity):
     """Note ap_object with progress field is fully preserved in type_data."""
-    data = _make_incoming_ap(
-        remote_identity, [_NOTE_AP], uri_suffix="test-post-note"
-    )
+    data = _make_incoming_ap(remote_identity, [_NOTE_AP], uri_suffix="test-post-note")
 
     post = Post.by_ap(data=data, create=True)
 
@@ -347,7 +346,8 @@ def test_by_ap_without_related_with_leaves_type_data_alone(
     # type_data may be None or a non-dict (e.g. QuestionData) but never a
     # dict containing an "object" key with relatedWith
     assert not (
-        isinstance(post.type_data, dict) and "relatedWith" in post.type_data.get("object", {})
+        isinstance(post.type_data, dict)
+        and "relatedWith" in post.type_data.get("object", {})
     )
 
 
