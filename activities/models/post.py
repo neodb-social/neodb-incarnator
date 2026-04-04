@@ -1327,11 +1327,16 @@ class Post(StatorModel):
             # Potentially schedule a fetch of the reply parent, and recalculate
             # its stats if it's here already.
             if post.in_reply_to:
+                depth = data.get("_fetch_depth", 0)
                 try:
                     parent = cls.by_object_uri(post.in_reply_to)
                 except cls.DoesNotExist:
                     try:
-                        cls.ensure_object_uri(post.in_reply_to, reason=post.object_uri)
+                        cls.ensure_object_uri(
+                            post.in_reply_to,
+                            reason=post.object_uri,
+                            depth=depth + 1,
+                        )
                     except ValueError:
                         logger.warning(
                             "Cannot fetch ancestor of Post=%s, ancestor_uri=%s",
@@ -1347,7 +1352,9 @@ class Post(StatorModel):
         return post
 
     @classmethod
-    def by_object_uri(cls, object_uri, fetch=False, fetch_as=None) -> "Post":
+    def by_object_uri(
+        cls, object_uri, fetch=False, fetch_as=None, fetch_depth: int = 0
+    ) -> "Post":
         """
         Gets the post by URI - either looking up locally, or fetching
         from the other end if it's not here.
@@ -1373,8 +1380,12 @@ class Post(StatorModel):
                     )
                 try:
                     json_data = json_from_response(response)
+                    ap_data = canonicalise(
+                        json_data, include_security=True, outbound=False
+                    )
+                    ap_data["_fetch_depth"] = fetch_depth
                     post = cls.by_ap(
-                        canonicalise(json_data, include_security=True, outbound=False),
+                        ap_data,
                         create=True,
                         update=True,
                         fetch_author=True,
@@ -1390,14 +1401,26 @@ class Post(StatorModel):
             else:
                 raise cls.DoesNotExist(f"Cannot find Post with URI {object_uri}")
 
+    MAX_ANCESTOR_FETCH_DEPTH = 20
+
     @classmethod
-    def ensure_object_uri(cls, object_uri: str, reason: str | None = None):
+    def ensure_object_uri(
+        cls, object_uri: str, reason: str | None = None, depth: int = 0
+    ):
         """
         Sees if the post is in our local set, and if not, schedules a fetch
-        for it (in the background)
+        for it (in the background). Depth limits recursive ancestor fetching.
         """
         if not object_uri or "://" not in object_uri:
             raise ValueError("URI missing or invalid")
+        if depth >= cls.MAX_ANCESTOR_FETCH_DEPTH:
+            logger.info(
+                "Skipping fetch of %s: depth %d exceeds limit %d",
+                object_uri,
+                depth,
+                cls.MAX_ANCESTOR_FETCH_DEPTH,
+            )
+            return
         try:
             cls.by_object_uri(object_uri)
         except cls.DoesNotExist:
@@ -1406,6 +1429,7 @@ class Post(StatorModel):
                     "type": "FetchPost",
                     "object": object_uri,
                     "reason": reason,
+                    "depth": depth,
                 }
             )
 
@@ -1560,12 +1584,14 @@ class Post(StatorModel):
     @classmethod
     def handle_fetch_internal(cls, data):
         """
-        Handles an internal fetch-request inbox message
+        Handles an internal fetch-request inbox message.
+        Passes depth through to by_object_uri so ancestor fetching is bounded.
         """
         try:
             uri = data["object"]
+            depth = data.get("depth", 0)
             if "://" in uri:
-                cls.by_object_uri(uri, fetch=True)
+                cls.by_object_uri(uri, fetch=True, fetch_depth=depth)
         except (cls.DoesNotExist, KeyError):
             pass
 
