@@ -113,6 +113,8 @@ class NodeInfo2(View):
             local_identities = Identity.objects.filter(local=True).count()
             local_posts = Post.objects.filter(local=True).count()
             metadata = {"features": ["quote_posting", "editing", "polls"]}
+        if settings.SETUP.NO_FEDERATION:
+            metadata["federation"] = {"enabled": False}
         return JsonResponse(
             {
                 "version": "2.0",
