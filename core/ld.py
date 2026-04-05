@@ -715,6 +715,28 @@ def canonicalise(
                 "toot": "http://joinmastodon.org/ns#",
                 "votersCount": "toot:votersCount",
                 "featured": {"@id": "toot:featured", "@type": "@id"},
+                # NeoDB extensions
+                "neodb": "https://neodb.social/ns#",
+                "Review": "neodb:Review",
+                "Rating": "neodb:Rating",
+                "Comment": "neodb:Comment",
+                "Status": "neodb:Status",
+                "CollectionItem": "neodb:CollectionItem",
+                "withRegardTo": {"@id": "neodb:withRegardTo", "@type": "@id"},
+                "relatedWith": {
+                    "@id": "neodb:relatedWith",
+                    "@container": "@set",
+                },
+                "best": "neodb:best",
+                "worst": "neodb:worst",
+                "value": "neodb:value",
+                "status": "neodb:status",
+                "progress": "neodb:progress",
+                "collection": {"@id": "neodb:collection", "@type": "@id"},
+                "relatedWithItemPosition": "neodb:relatedWithItemPosition",
+                "relatedWithItemPositionType": "neodb:relatedWithItemPositionType",
+                "title": "neodb:title",
+                "note": "neodb:note",
             }
         )
 
