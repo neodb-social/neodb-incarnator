@@ -610,17 +610,33 @@ class Post(StatorModel):
             return func(local=local)
         return self._safe_content_note(local=local)  # fallback
 
+    @staticmethod
+    def _rewrite_neodb_urls(content: str) -> str:
+        """Rewrite ~neodb~ placeholder URLs to local search URLs for display."""
+        return re.sub(
+            r'href="(https?://[^/"]+)/~neodb~(/[^"]+)"',
+            'href="https://' + settings.SETUP.MAIN_DOMAIN + r'/search?r=1&q=\1\2"',
+            content,
+        )
+
     def safe_content_local(self):
         """
         Returns the content formatted for local display
         """
-        return self.safe_content(local=True)
+        return self._rewrite_neodb_urls(self.safe_content(local=True))
 
     def safe_content_remote(self):
         """
         Returns the content formatted for remote consumption
         """
         return self.safe_content(local=False)
+
+    def safe_content_api(self) -> str:
+        """
+        Returns the content formatted for API consumption
+        (with ~neodb~ URL rewrites, but otherwise same as remote)
+        """
+        return self._rewrite_neodb_urls(self.safe_content(local=False))
 
     def summary_class(self) -> str:
         """
@@ -1193,11 +1209,6 @@ class Post(StatorModel):
             if not post.content and post.summary:
                 post.content = post.summary
                 post.summary = None
-            post.content = re.sub(
-                r'href="(https?://[^/"]+)/~neodb~(/[^"]+)"',
-                'href="https://' + settings.SETUP.MAIN_DOMAIN + r'/search?r=1&q=\1\2"',
-                post.content,
-            )
             post.sensitive = data.get("sensitive", False)
             post.published = parse_ld_date(data.get("published")) or timezone.now()
             post.edited = parse_ld_date(data.get("updated"))
@@ -1717,7 +1728,7 @@ class Post(StatorModel):
             "uri": self.object_uri,
             "created_at": format_ld_date(self.published),
             "account": self.author.to_mastodon_json(),
-            "content": self.safe_content_remote(),
+            "content": self.safe_content_api(),
             "language": language,
             "visibility": visibility_mapping[self.visibility],
             "sensitive": self.sensitive,
@@ -1764,7 +1775,7 @@ class Post(StatorModel):
                 if self.preview_card_id and self.preview_card.state == "fetched"
                 else None
             ),
-            "text": self.safe_content_remote(),
+            "text": self.safe_content_api(),
             "edited_at": format_ld_date(self.edited) if self.edited else None,
             "application": self.application.to_mastodon_status_json()
             if self.application
