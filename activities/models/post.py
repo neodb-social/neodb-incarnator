@@ -1369,9 +1369,7 @@ class Post(StatorModel):
                     replies_uri = replies
                 elif isinstance(replies, dict):
                     replies_uri = replies.get("id")
-                if replies_uri and replies_uri.startswith(
-                    ("https://", "http://")
-                ):
+                if replies_uri and replies_uri.startswith(("https://", "http://")):
                     InboxMessage.create_internal(
                         {
                             "type": "FetchReplies",
@@ -1641,9 +1639,7 @@ class Post(StatorModel):
         reply URI not already in the local database.
         """
         replies_uri = data.get("object")
-        if not replies_uri or not replies_uri.startswith(
-            ("https://", "http://")
-        ):
+        if not replies_uri or not replies_uri.startswith(("https://", "http://")):
             logger.warning(
                 "Skipping fetch for non-HTTP URI: %s", replies_uri or "<empty>"
             )
