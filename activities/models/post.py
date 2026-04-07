@@ -1369,7 +1369,9 @@ class Post(StatorModel):
                     replies_uri = replies
                 elif isinstance(replies, dict):
                     replies_uri = replies.get("id")
-                if replies_uri and "://" in replies_uri:
+                if replies_uri and replies_uri.startswith(
+                    ("https://", "http://")
+                ):
                     InboxMessage.create_internal(
                         {
                             "type": "FetchReplies",
@@ -1395,7 +1397,12 @@ class Post(StatorModel):
                     response = (fetch_as or SystemActor()).signed_request(
                         method="get", uri=object_uri
                     )
-                except (httpx.HTTPError, ssl.SSLCertVerificationError, ValueError):
+                except (
+                    httpx.HTTPError,
+                    ssl.SSLCertVerificationError,
+                    ValueError,
+                    TypeError,
+                ):
                     raise cls.DoesNotExist(f"Could not fetch {object_uri}")
                 if response.status_code in [404, 410]:
                     raise cls.DoesNotExist(f"No post at {object_uri}")
@@ -1618,8 +1625,10 @@ class Post(StatorModel):
         try:
             uri = data["object"]
             depth = data.get("depth", 0)
-            if "://" in uri:
+            if uri.startswith(("https://", "http://")):
                 cls.by_object_uri(uri, fetch=True, fetch_depth=depth)
+            else:
+                logger.warning("Skipping fetch for non-HTTP URI: %s", uri)
         except (cls.DoesNotExist, KeyError):
             pass
 
@@ -1632,7 +1641,12 @@ class Post(StatorModel):
         reply URI not already in the local database.
         """
         replies_uri = data.get("object")
-        if not replies_uri or "://" not in replies_uri:
+        if not replies_uri or not replies_uri.startswith(
+            ("https://", "http://")
+        ):
+            logger.warning(
+                "Skipping fetch for non-HTTP URI: %s", replies_uri or "<empty>"
+            )
             return
 
         try:
