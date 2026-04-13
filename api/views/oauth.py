@@ -1,4 +1,5 @@
 import base64
+import hmac
 import secrets
 import time
 from urllib.parse import urlparse, urlunparse
@@ -148,9 +149,10 @@ class TokenView(View):
         self, authorization: Authorization, client_id, client_secret, redirect_uri
     ):
         application = authorization.application
+        # Use constant-time comparison on secrets to prevent timing attacks
         return (
-            application.client_id == client_id
-            and application.client_secret == client_secret
+            hmac.compare_digest(application.client_id, client_id or "")
+            and hmac.compare_digest(application.client_secret, client_secret or "")
             and authorization.redirect_uri == redirect_uri
         )
 
@@ -191,10 +193,9 @@ class TokenView(View):
                     status=400,
                 )
 
-            authorization = Authorization.objects.get(code=code)
-            if (
-                not authorization
-                or timezone.now() - authorization.created
+            authorization = Authorization.objects.filter(code=code).first()
+            if not authorization or (
+                timezone.now() - authorization.created
                 > timezone.timedelta(seconds=authorization.valid_for_seconds)
             ):
                 return JsonResponse({"error": "access_denied"}, status=401)
