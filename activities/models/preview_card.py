@@ -1,19 +1,11 @@
-import ipaddress
-import socket
 from html.parser import HTMLParser
 from urllib.parse import parse_qs, urlencode, urlparse, urlunparse
 
-import httpx
+from core.files import make_safe_client
 from core.uris import ProxyAbsoluteUrl
-from django.conf import settings
 from django.db import models
 from django.utils import timezone
 from stator.models import State, StateField, StateGraph, StatorModel
-
-
-class SSRFAttemptError(ValueError):
-    pass
-
 
 # ---------------------------------------------------------------------------
 # Tracking param stripping
@@ -63,52 +55,6 @@ _GLOBAL_BLOCKED_PARAMS: frozenset[str] = frozenset(
 
 # Tier 2: strip any param whose name starts with one of these prefixes.
 _GLOBAL_BLOCKED_PREFIXES: tuple[str, ...] = ("utm_", "ga_", "mtm_", "pk_")
-
-
-# ---------------------------------------------------------------------------
-# SSRF protection
-# ---------------------------------------------------------------------------
-
-
-def _check_url_safety(request: httpx.Request) -> None:
-    """
-    httpx event hook: validates that the request target does not resolve to a
-    private/reserved IP address. Fires on every request including redirect hops.
-    Raises SSRFAttemptError to abort if any resolved IP is unsafe.
-    """
-    host = request.url.host
-    port = request.url.port or (443 if request.url.scheme == "https" else 80)
-    try:
-        infos = socket.getaddrinfo(host, port, type=socket.SOCK_STREAM)
-    except socket.gaierror as exc:
-        raise SSRFAttemptError(f"Cannot resolve host {host!r}: {exc}") from exc
-    for _, _, _, _, sockaddr in infos:
-        ip = ipaddress.ip_address(sockaddr[0])
-        if (
-            ip.is_private
-            or ip.is_loopback
-            or ip.is_link_local
-            or ip.is_reserved
-            or ip.is_multicast
-            or ip.is_unspecified
-        ):
-            raise SSRFAttemptError(
-                f"Request to {host!r} blocked: resolved to non-global IP {sockaddr[0]}"
-            )
-
-
-def _make_safe_client() -> httpx.Client:
-    """
-    Returns an httpx.Client configured with SSRF protection, timeouts,
-    redirect limits, and a User-Agent header.
-    """
-    return httpx.Client(
-        follow_redirects=True,
-        max_redirects=5,
-        timeout=httpx.Timeout(connect=5.0, read=10.0, write=5.0, pool=5.0),
-        headers={"User-Agent": settings.TAKAHE_USER_AGENT},
-        event_hooks={"request": [_check_url_safety]},
-    )
 
 
 # ---------------------------------------------------------------------------
@@ -181,7 +127,7 @@ class PreviewCardStates(StateGraph):
             return cls.fetch_failed
 
         try:
-            with _make_safe_client() as client:
+            with make_safe_client() as client:
                 response = client.get(instance.url)
         except Exception:
             return cls.fetch_failed

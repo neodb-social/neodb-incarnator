@@ -1,10 +1,11 @@
 import httpx
-
-from activities.models import Hashtag, Post
+from core.files import SSRFAttemptError
 from core.json import json_from_response
 from core.ld import canonicalise
-from users.models import Domain, Identity, IdentityStates
 from users.models.system_actor import SystemActor
+
+from activities.models import Hashtag, Post
+from users.models import Domain, Identity, IdentityStates
 
 
 class SearchService:
@@ -85,7 +86,7 @@ class SearchService:
                 method="get",
                 uri=self.query,
             )
-        except httpx.RequestError:
+        except (httpx.RequestError, SSRFAttemptError):
             return None
         if response.status_code >= 400:
             return None

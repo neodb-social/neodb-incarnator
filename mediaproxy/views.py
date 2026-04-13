@@ -2,6 +2,7 @@ from urllib.parse import urlparse
 
 import httpx
 from activities.models import Emoji, PostAttachment
+from core.files import SSRFAttemptError, make_safe_client
 from django.conf import settings
 from django.http import Http404, HttpResponse
 from django.shortcuts import get_object_or_404
@@ -36,13 +37,11 @@ class BaseProxyView(View):
             )
         else:
             try:
-                remote_response = httpx.get(
-                    remote_url,
-                    headers={"User-Agent": settings.TAKAHE_USER_AGENT},
-                    follow_redirects=True,
+                with make_safe_client(
                     timeout=settings.SETUP.REMOTE_TIMEOUT,
-                )
-            except httpx.RequestError:
+                ) as client:
+                    remote_response = client.get(remote_url)
+            except (httpx.RequestError, SSRFAttemptError):
                 return HttpResponse(status=502)
             if remote_response.status_code >= 400:
                 return HttpResponse(status=502)

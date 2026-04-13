@@ -18,6 +18,7 @@ from httpx._types import TimeoutTypes
 from idna.core import InvalidCodepoint
 from pyld import jsonld
 
+from core.files import SSRFAttemptError, check_url_safety
 from core.ld import format_ld_date
 
 logger = logging.getLogger(__name__)
@@ -322,7 +323,10 @@ class HttpSignature:
 
         # Send the request with all those headers except the pseudo one
         del headers["(request-target)"]
-        with httpx.Client(timeout=timeout) as client:
+        with httpx.Client(
+            timeout=timeout,
+            event_hooks={"request": [check_url_safety]},
+        ) as client:
             try:
                 response = client.request(
                     method,
@@ -338,6 +342,9 @@ class HttpSignature:
             except InvalidCodepoint as ex:
                 # Convert to a more generic error we handle
                 raise httpx.HTTPError(f"InvalidCodepoint: {str(ex)}") from None
+            except SSRFAttemptError:
+                logger.warning("SSRF blocked on %s %s", method, uri)
+                raise
 
             if (
                 method == "post"

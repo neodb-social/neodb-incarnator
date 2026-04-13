@@ -6,17 +6,9 @@ from urllib.parse import urlparse
 
 import httpx
 import urlman
-from django.conf import settings
-from django.core.exceptions import ObjectDoesNotExist
-from django.db import IntegrityError, models, transaction
-from django.db.models.signals import post_save
-from django.dispatch import receiver
-from django.utils import timezone
-from lxml import etree
-from pyld.jsonld import JsonLdError
-
 from api.models.push import PushSubscription, PushType
 from core.exceptions import ActorMismatchError
+from core.files import SSRFAttemptError, check_url_safety
 from core.html import ContentRenderer, FediverseHtmlParser
 from core.json import json_from_response
 from core.ld import (
@@ -36,8 +28,17 @@ from core.uris import (
     RelativeAbsoluteUrl,
     StaticAbsoluteUrl,
 )
+from django.conf import settings
+from django.core.exceptions import ObjectDoesNotExist
+from django.db import IntegrityError, models, transaction
+from django.db.models.signals import post_save
+from django.dispatch import receiver
+from django.utils import timezone
+from lxml import etree
+from pyld.jsonld import JsonLdError
 from stator.exceptions import TryAgainLater
 from stator.models import State, StateField, StateGraph, StatorModel
+
 from users.models.domain import Domain
 from users.models.inbox_message import InboxMessage
 from users.models.system_actor import SystemActor
@@ -860,6 +861,7 @@ class Identity(StatorModel):
         with httpx.Client(
             timeout=settings.SETUP.REMOTE_TIMEOUT,
             headers={"User-Agent": settings.TAKAHE_USER_AGENT},
+            event_hooks={"request": [check_url_safety]},
         ) as client:
             try:
                 response = client.get(
@@ -879,7 +881,7 @@ class Identity(StatorModel):
                     )
                     if template:
                         return template
-            except (httpx.RequestError, etree.ParseError):
+            except (httpx.RequestError, SSRFAttemptError, etree.ParseError):
                 pass
 
         return f"https://{domain}/.well-known/webfinger?resource={{uri}}"
@@ -893,13 +895,14 @@ class Identity(StatorModel):
         domain = handle.split("@")[1].lower()
         try:
             webfinger_url = cls.fetch_webfinger_url(domain)
-        except ssl.SSLCertVerificationError:
+        except (ssl.SSLCertVerificationError, SSRFAttemptError):
             return None, None
 
         # Go make a Webfinger request
         with httpx.Client(
             timeout=settings.SETUP.REMOTE_TIMEOUT,
             headers={"User-Agent": settings.TAKAHE_USER_AGENT},
+            event_hooks={"request": [check_url_safety]},
         ) as client:
             try:
                 response = client.get(
@@ -908,7 +911,11 @@ class Identity(StatorModel):
                     headers={"Accept": "application/json"},
                 )
                 response.raise_for_status()
-            except (httpx.HTTPError, ssl.SSLCertVerificationError) as ex:
+            except (
+                httpx.HTTPError,
+                ssl.SSLCertVerificationError,
+                SSRFAttemptError,
+            ) as ex:
                 response = getattr(ex, "response", None)
                 if isinstance(ex, httpx.TimeoutException) or (
                     response and response.status_code in [408, 429, 504]
@@ -1039,7 +1046,7 @@ class Identity(StatorModel):
             )
         except httpx.TimeoutException:
             raise TryAgainLater()
-        except (httpx.RequestError, ssl.SSLCertVerificationError):
+        except (httpx.RequestError, ssl.SSLCertVerificationError, SSRFAttemptError):
             return False
         content_type = response.headers.get("content-type")
         if content_type and "html" in content_type:
