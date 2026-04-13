@@ -10,9 +10,8 @@ from activities.models.post import _attach_preview_card
 from activities.models.preview_card import (
     PreviewCard,
     PreviewCardStates,
-    SSRFAttemptError,
-    _check_url_safety,
 )
+from core.files import SSRFAttemptError, check_url_safety
 from django.core.management import call_command
 
 
@@ -142,42 +141,42 @@ def test_ssrf_blocks_loopback():
     req = httpx.Request("GET", "http://localhost/admin")
     with patch("socket.getaddrinfo", return_value=_mock_getaddrinfo("127.0.0.1")):
         with pytest.raises(SSRFAttemptError):
-            _check_url_safety(req)
+            check_url_safety(req)
 
 
 def test_ssrf_blocks_private_10():
     req = httpx.Request("GET", "http://internal.corp/secret")
     with patch("socket.getaddrinfo", return_value=_mock_getaddrinfo("10.0.0.5")):
         with pytest.raises(SSRFAttemptError):
-            _check_url_safety(req)
+            check_url_safety(req)
 
 
 def test_ssrf_blocks_private_192_168():
     req = httpx.Request("GET", "http://router.local/")
     with patch("socket.getaddrinfo", return_value=_mock_getaddrinfo("192.168.1.1")):
         with pytest.raises(SSRFAttemptError):
-            _check_url_safety(req)
+            check_url_safety(req)
 
 
 def test_ssrf_blocks_aws_metadata():
     req = httpx.Request("GET", "http://169.254.169.254/latest/meta-data/")
     with patch("socket.getaddrinfo", return_value=_mock_getaddrinfo("169.254.169.254")):
         with pytest.raises(SSRFAttemptError):
-            _check_url_safety(req)
+            check_url_safety(req)
 
 
 def test_ssrf_blocks_unresolvable():
     req = httpx.Request("GET", "http://doesnotexist.invalid/")
     with patch("socket.getaddrinfo", side_effect=socket.gaierror("not found")):
         with pytest.raises(SSRFAttemptError):
-            _check_url_safety(req)
+            check_url_safety(req)
 
 
 def test_ssrf_allows_public_ip():
     req = httpx.Request("GET", "https://example.com/")
     # 93.184.216.34 is example.com — a real public IP
     with patch("socket.getaddrinfo", return_value=_mock_getaddrinfo("93.184.216.34")):
-        _check_url_safety(req)  # should not raise
+        check_url_safety(req)  # should not raise
 
 
 # ---------------------------------------------------------------------------
