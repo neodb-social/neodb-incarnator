@@ -3,15 +3,9 @@ import json
 import logging
 from urllib.parse import urldefrag, urlparse
 
-from django.conf import settings
-from django.http import Http404, HttpResponse, HttpResponseBadRequest, JsonResponse
-from django.utils.decorators import method_decorator
-from django.views.decorators.cache import cache_control
-from django.views.decorators.csrf import csrf_exempt
-from django.views.generic import View
-
 from activities.models import Post
 from activities.services import TimelineService
+from core import sentry
 from core.decorators import cache_page
 from core.ld import canonicalise
 from core.signatures import (
@@ -21,7 +15,14 @@ from core.signatures import (
     VerificationFormatError,
 )
 from core.views import StaticContentView
+from django.conf import settings
+from django.http import Http404, HttpResponse, HttpResponseBadRequest, JsonResponse
+from django.utils.decorators import method_decorator
+from django.views.decorators.cache import cache_control
+from django.views.decorators.csrf import csrf_exempt
+from django.views.generic import View
 from takahe.neodb import __version__ as __neodb_version__
+
 from users.models import Identity, InboxMessage, SystemActor
 from users.models.domain import Domain
 from users.shortcuts import by_handle_or_404
@@ -161,6 +162,7 @@ class Inbox(FederatedView):
     """
 
     def post(self, request, handle=None):
+        sentry.count("ap.message.received")
         # Reject bodies that are unfeasibly big
         if len(request.body) > settings.JSONLD_MAX_SIZE:
             return HttpResponseBadRequest("Payload size too large")
@@ -396,6 +398,7 @@ class Inbox(FederatedView):
                 message=document,
                 metadata=metadata,
             )
+        sentry.count("ap.message.enqueued", attributes={"type": document_type.lower()})
         return HttpResponse(status=202)
 
 

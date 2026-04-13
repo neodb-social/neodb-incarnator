@@ -28,6 +28,8 @@ if SENTRY_ENABLED:
     set_tag = sentry_sdk.set_tag
     start_transaction = sentry_sdk.start_transaction
     start_span = sentry_sdk.start_span
+    _metrics_count = sentry_sdk.metrics.count
+    _metrics_distribution = sentry_sdk.metrics.distribution
 else:
     configure_scope = noop_context
     push_scope = noop_context
@@ -35,6 +37,21 @@ else:
     set_tag = noop
     start_transaction = noop_context
     start_span = noop_context
+    _metrics_count = noop
+    _metrics_distribution = noop
+
+
+def count(key: str, value: float = 1, attributes: dict[str, str] | None = None):
+    _metrics_count(key, value, attributes=attributes or {})
+
+
+def distribution(
+    key: str,
+    value: float,
+    unit: str = "none",
+    attributes: dict[str, str] | None = None,
+):
+    _metrics_distribution(key, value, unit=unit, attributes=attributes or {})
 
 
 def set_takahe_app(name: str):

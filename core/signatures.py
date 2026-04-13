@@ -18,6 +18,7 @@ from httpx._types import TimeoutTypes
 from idna.core import InvalidCodepoint
 from pyld import jsonld
 
+from core import sentry
 from core.files import SSRFAttemptError, check_url_safety
 from core.ld import format_ld_date
 
@@ -346,6 +347,7 @@ class HttpSignature:
                 logger.warning("SSRF blocked on %s %s", method, uri)
                 raise
 
+            sentry.count("ap.message.sent", attributes={"method": method})
             if (
                 method == "post"
                 and response.status_code >= 400
