@@ -124,6 +124,11 @@ class PostInteractionStates(StateGraph):
                 subject_post=instance.post,
                 subject_post_interaction=instance,
             )
+        # Vote: no fan-out needed for undo (votes can reach here when
+        # a post is deleted and all its interactions are bulk-transitioned
+        # to undone)
+        elif instance.type == instance.Types.vote:
+            pass
         else:
             raise ValueError("Cannot fan out unknown type")
         # And one for themselves if they're local and it's a boost
