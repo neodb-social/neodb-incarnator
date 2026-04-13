@@ -275,7 +275,7 @@ def task_transition(instance: StatorModel, in_thread: bool = True):
         attrs = {
             "model": instance._meta.label_lower,
             "from": from_state,
-            "to": result or "",
+            "to": str(result or ""),
         }
         sentry.count("stator.transition", attributes=attrs)
         sentry.distribution(

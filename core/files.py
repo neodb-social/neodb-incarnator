@@ -31,7 +31,9 @@ def check_url_safety(request: httpx.Request) -> None:
     try:
         infos = socket.getaddrinfo(host, port, type=socket.SOCK_STREAM)
     except socket.gaierror as exc:
-        raise SSRFAttemptError(f"Cannot resolve host {host!r}: {exc}") from exc
+        raise httpx.ConnectError(
+            f"Cannot resolve host {host!r}: {exc}"
+        ) from exc
     for _, _, _, _, sockaddr in infos:
         ip = ipaddress.ip_address(sockaddr[0])
         if (

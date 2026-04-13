@@ -165,10 +165,10 @@ def test_ssrf_blocks_aws_metadata():
             check_url_safety(req)
 
 
-def test_ssrf_blocks_unresolvable():
+def test_ssrf_raises_connect_error_for_unresolvable():
     req = httpx.Request("GET", "http://doesnotexist.invalid/")
     with patch("socket.getaddrinfo", side_effect=socket.gaierror("not found")):
-        with pytest.raises(SSRFAttemptError):
+        with pytest.raises(httpx.ConnectError):
             check_url_safety(req)
 
 
