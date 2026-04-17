@@ -165,10 +165,11 @@ class InboxMessageStates(StateGraph):
                 case "create":
                     match instance.message_object_type:
                         case "note":
-                            if instance.message_object_has_content:
+                            if instance.message_object_has_content_or_attachment:
                                 Post.handle_create_ap(instance.message)
                             else:
-                                # Notes without content are Interaction candidates
+                                # Bare Notes (no content, no attachment) are
+                                # Interaction candidates, e.g. poll votes.
                                 PostInteraction.handle_ap(instance.message)
                         case "question":
                             Post.handle_create_ap(instance.message)
@@ -383,6 +384,10 @@ class InboxMessage(StatorModel):
         return self.message.get("actor")
 
     @property
-    def message_object_has_content(self):
+    def message_object_has_content_or_attachment(self):
         object = self.message.get("object", {})
-        return "content" in object or "contentMap" in object
+        return (
+            "content" in object
+            or "contentMap" in object
+            or bool(object.get("attachment"))
+        )
