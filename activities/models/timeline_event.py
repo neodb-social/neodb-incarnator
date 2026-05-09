@@ -1,8 +1,9 @@
-from django.db import models
+from django.db import OperationalError, models
 from django.utils import timezone
 
 from api.models.push import PushType
 from core.ld import format_ld_date
+from stator.exceptions import TryAgainLater
 from users.models import Bookmark, Identity
 
 
@@ -287,28 +288,36 @@ class TimelineEvent(models.Model):
             q = models.Q(
                 type=cls.Types.post, subject_post__author_id=object_id
             ) | models.Q(type=cls.Types.boost, subject_identity_id=object_id)
-        TimelineEvent.objects.filter(q, identity_id=actor_id).delete()
-        if full_erase:
-            Bookmark.objects.filter(
-                identity_id=actor_id, post__author_id=object_id
-            ).delete()
-            Bookmark.objects.filter(
-                identity_id=actor_id, post__author_id=object_id
-            ).delete()
-            PostInteraction.objects.filter(
-                identity=actor_id, post__author=object_id
-            ).update(state=PostInteractionStates.undone)
-            PostInteraction.objects.filter(
-                identity=object_id, post__author=actor_id
-            ).update(state=PostInteractionStates.undone)
-            actor = Identity.objects.filter(pk=actor_id).first()
-            if actor:
-                for post in actor.posts_mentioning.filter(author_id=object_id):
-                    post.mentions.remove(actor)
-                    parent = post.in_reply_to_post()
-                    if parent and parent.author_id == actor_id:
-                        # recalculate reply count
-                        parent.calculate_stats()
+        try:
+            TimelineEvent.objects.filter(q, identity_id=actor_id).delete()
+            if full_erase:
+                Bookmark.objects.filter(
+                    identity_id=actor_id, post__author_id=object_id
+                ).delete()
+                Bookmark.objects.filter(
+                    identity_id=actor_id, post__author_id=object_id
+                ).delete()
+                PostInteraction.objects.filter(
+                    identity=actor_id, post__author=object_id
+                ).update(state=PostInteractionStates.undone)
+                PostInteraction.objects.filter(
+                    identity=object_id, post__author=actor_id
+                ).update(state=PostInteractionStates.undone)
+                actor = Identity.objects.filter(pk=actor_id).first()
+                if actor:
+                    for post in actor.posts_mentioning.filter(author_id=object_id):
+                        post.mentions.remove(actor)
+                        parent = post.in_reply_to_post()
+                        if parent and parent.author_id == actor_id:
+                            # recalculate reply count
+                            parent.calculate_stats()
+        except OperationalError as e:
+            # Concurrent deletes on activities_timelineevent (e.g. a Post delete
+            # cascade racing another ClearTimeline) can deadlock. Re-raise as
+            # TryAgainLater so Stator silently reschedules.
+            if "deadlock detected" not in str(e):
+                raise
+            raise TryAgainLater() from e
 
     ### Mastodon Client API ###
 
