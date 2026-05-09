@@ -49,6 +49,11 @@ dev = [
     "pytest-httpx>=0.30.0",
 ]
 
+[tool.uv.sources]
+# Forked to add thread-safety to module-level LRUCache (NEODB-SOCIAL-4P0,
+# EGGPLANT-7K). Track upstream v3.0.0 + neodb-social/pyld@neodb.
+pyld = { git = "https://github.com/neodb-social/pyld.git", rev = "fb0642baeb467c6449679c4f7f9ecd7622543f22" }
+
 [tool.pytest.ini_options]
 addopts = "--tb=short --ds=takahe.settings --import-mode=importlib"
 asyncio_default_fixture_loop_scope = "function"
