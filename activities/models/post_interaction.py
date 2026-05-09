@@ -1,17 +1,18 @@
 from collections.abc import Iterable
 
+from core.exceptions import ActivityPubFormatError, ActorMismatchError
+from core.ld import format_ld_date, get_str_or_id, parse_ld_date
+from core.snowflake import Snowflake
 from django.conf import settings
 from django.db import models, transaction
 from django.utils import timezone
+from stator.models import State, StateField, StateGraph, StatorModel
 
 from activities.models.fan_out import FanOut
 from activities.models.post import Post
 from activities.models.post_types import QuestionData
 from activities.models.timeline_event import TimelineEvent
-from core.ld import format_ld_date, get_str_or_id, parse_ld_date
-from core.snowflake import Snowflake
-from stator.models import State, StateField, StateGraph, StatorModel
-from users.models import Identity, Block
+from users.models import Block, Identity
 
 
 class PostInteractionStates(StateGraph):
@@ -469,7 +470,9 @@ class PostInteraction(StatorModel):
                         )
 
                 else:
-                    raise ValueError(f"Cannot handle AP type {data['type']}")
+                    raise ActivityPubFormatError(
+                        f"Cannot handle AP type {data['type']}"
+                    )
                 # Make the actual interaction
                 boost = cls.objects.create(
                     object_uri=data["id"],
@@ -516,7 +519,7 @@ class PostInteraction(StatorModel):
                 return
             # Verify the actor matches
             if data["actor"] != interaction.identity.actor_uri:
-                raise ValueError("Actor mismatch on interaction undo")
+                raise ActorMismatchError("Actor mismatch on interaction undo")
             # Delete all events that reference it
             interaction.timeline_events.all().delete()
             # Force it into undone_fanned_out as it's not ours

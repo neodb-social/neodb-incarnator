@@ -11,8 +11,7 @@ from urllib.parse import urlparse
 
 import httpx
 import urlman
-from core.exceptions import ActivityPubFormatError
-from core.signatures import LDSignature
+from core.exceptions import ActivityPubFormatError, ActorMismatchError
 from core.html import ContentRenderer, FediverseHtmlParser
 from core.json import json_from_response
 from core.ld import (
@@ -23,6 +22,7 @@ from core.ld import (
     get_value_or_map,
     parse_ld_date,
 )
+from core.signatures import LDSignature
 from core.snowflake import Snowflake
 from deepmerge import always_merger
 from django.conf import settings
@@ -1144,7 +1144,9 @@ class Post(StatorModel):
                 raise TypeError()
             # Ensure the domain of the object's actor and ID match to prevent injection
             if urlparse(data["id"]).hostname != urlparse(data["attributedTo"]).hostname:
-                raise ValueError("Object's ID domain is different to its author")
+                raise ActivityPubFormatError(
+                    "Object's ID domain is different to its author"
+                )
         except (TypeError, KeyError) as ex:
             raise cls.DoesNotExist(
                 "Object data is not a recognizable ActivityPub object"
@@ -1479,7 +1481,9 @@ class Post(StatorModel):
             if isinstance(attributedTo, dict):
                 attributedTo = attributedTo["id"]
             if data["actor"] != attributedTo:
-                raise ValueError("Create actor does not match its Post object", data)
+                raise ActorMismatchError(
+                    "Create actor does not match its Post object", data
+                )
             # Create it, stator will fan it out locally
             post = cls.by_ap(
                 data["object"], create=True, update=True, fetch_author=True
@@ -1499,7 +1503,9 @@ class Post(StatorModel):
             if isinstance(attributedTo, dict):
                 attributedTo = attributedTo["id"]
             if data["actor"] != attributedTo:
-                raise ValueError("Create actor does not match its Post object", data)
+                raise ActorMismatchError(
+                    "Update actor does not match its Post object", data
+                )
             # Find it and update it
             try:
                 cls.by_ap(data["object"], create=False, update=True)
@@ -1526,7 +1532,7 @@ class Post(StatorModel):
                 return
             # Ensure the actor on the request authored the post
             if not post.author.actor_uri == data["actor"]:
-                raise ValueError("Actor on delete does not match object")
+                raise ActorMismatchError("Actor on delete does not match object")
             if (
                 post.type_data
                 and "object" in post.type_data
