@@ -14,6 +14,9 @@ on:
       - "**.py"
       - "requirements-dev.lock"
 
+permissions:
+  contents: read
+
 jobs:
   test:
     name: test py${{ matrix.python-version }} with pg${{ matrix.postgres-version }}

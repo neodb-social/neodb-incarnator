@@ -6,6 +6,7 @@ from django.conf import settings
 from django.contrib.auth.decorators import login_required
 from django.contrib.syndication.views import Feed
 from django.core import validators
+from django.core.exceptions import ValidationError
 from django.http import Http404, HttpResponse, JsonResponse
 from django.shortcuts import redirect
 from django.utils import timezone as tz
@@ -23,6 +24,19 @@ from core.models import Config
 from users.models import Domain, FollowStates, Identity
 from users.services import IdentityService
 from users.shortcuts import by_handle_or_404
+
+_remote_url_validator = validators.URLValidator(schemes=["http", "https"])
+
+
+def _safe_remote_redirect(url: str | None):
+    """Redirect to a remote actor URL only if it is a well-formed http(s) URL."""
+    if not url:
+        return None
+    try:
+        _remote_url_validator(url)
+    except ValidationError:
+        return None
+    return redirect(url)
 
 
 @method_decorator(vary_on_headers("Accept"), name="dispatch")
@@ -47,13 +61,15 @@ class ViewIdentity(ListView):
         )
         # If it's remote, redirect to its profile page
         if not self.identity.local:
-            if self.identity.profile_uri:
-                return redirect(self.identity.profile_uri)
-            elif self.identity.actor_uri:
+            response = _safe_remote_redirect(
+                self.identity.profile_uri
+            ) or _safe_remote_redirect(
                 # gup.pe topic actors don't have profile URLs
-                return redirect(self.identity.actor_uri)
-            else:
-                return Http404("Unknown actor")
+                self.identity.actor_uri
+            )
+            if response is not None:
+                return response
+            raise Http404("Unknown actor")
 
         # If they're coming in looking for JSON, they want the actor
         if request.ap_json:
@@ -62,7 +78,10 @@ class ViewIdentity(ListView):
         elif self.identity.deleted:
             raise Http404("Deleted identity")
         elif self.identity.local and self.identity.profile_uri:
-            return redirect(self.identity.profile_uri)
+            response = _safe_remote_redirect(self.identity.profile_uri)
+            if response is not None:
+                return response
+            raise Http404("Invalid profile URL")
         else:
             # Show normal page
             return super().get(request, identity=self.identity)
@@ -72,7 +91,10 @@ class ViewIdentity(ListView):
             return HttpResponse(status=503)
         # If this not a local actor, redirect to their canonical URI
         if not identity.local:
-            return redirect(identity.actor_uri)
+            response = _safe_remote_redirect(identity.actor_uri)
+            if response is not None:
+                return response
+            raise Http404("Invalid actor URL")
         r = JsonResponse(
             canonicalise(identity.to_ap(), include_security=True),
             content_type="application/activity+json",
