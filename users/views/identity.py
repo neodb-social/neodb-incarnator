@@ -1,12 +1,12 @@
 import re
 import string
+from urllib.parse import urlparse
 
 from django import forms
 from django.conf import settings
 from django.contrib.auth.decorators import login_required
 from django.contrib.syndication.views import Feed
 from django.core import validators
-from django.core.exceptions import ValidationError
 from django.http import Http404, HttpResponse, JsonResponse
 from django.shortcuts import redirect
 from django.utils import timezone as tz
@@ -25,16 +25,16 @@ from users.models import Domain, FollowStates, Identity
 from users.services import IdentityService
 from users.shortcuts import by_handle_or_404
 
-_remote_url_validator = validators.URLValidator(schemes=["http", "https"])
-
 
 def _safe_remote_redirect(url: str | None):
     """Redirect to a remote actor URL only if it is a well-formed http(s) URL."""
     if not url:
         return None
     try:
-        _remote_url_validator(url)
-    except ValidationError:
+        parsed = urlparse(url)
+    except ValueError:
+        return None
+    if parsed.scheme not in {"http", "https"} or not parsed.netloc:
         return None
     return redirect(url)
 

@@ -40,17 +40,16 @@ class Tag(ListView):
     }
     paginate_by = 25
 
-    _safe_tag_re = re.compile(r"^[a-z0-9_]+$")
-
     def get(self, request, hashtag, *args, **kwargs):
         tag = hashtag.lower().lstrip("#")
         # Reject any tag that isn't a plain slug so the redirect target below
         # cannot be tricked into pointing off-site (e.g. "\\evil.com").
-        if not self._safe_tag_re.match(tag):
+        if not re.fullmatch(r"[a-z0-9_]+", tag):
             raise Http404("Invalid hashtag")
         if hashtag != tag:
-            # SEO sanitize
-            return redirect(f"/tags/{tag}/", permanent=True)
+            # SEO sanitize. Concatenate against a constant "/tags/" prefix so
+            # static analysers can see the result is always a relative path.
+            return redirect("/tags/" + tag + "/", permanent=True)
         self.hashtag = get_object_or_404(Hashtag.objects.public(), hashtag=tag)
         return super().get(request, *args, **kwargs)
 
