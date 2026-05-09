@@ -146,7 +146,11 @@ class HttpSignature:
             }
         except KeyError as e:
             key_names = " ".join(bits.keys())
-            raise VerificationError(
+            # Treat missing fields as a format error so the inbox view
+            # returns 400 rather than 500. Foreign signature schemes
+            # (e.g. RFC 9421 `Signature: sig1=:...:`) parse cleanly into
+            # `bits` but lack the Cavage/HS2019 keys we need.
+            raise VerificationFormatError(
                 f"Missing item from details (have: {key_names}, error: {e})"
             )
         except binascii.Error:
