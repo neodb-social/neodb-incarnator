@@ -1533,16 +1533,20 @@ class Post(StatorModel):
             # Ensure the actor on the request authored the post
             if not post.author.actor_uri == data["actor"]:
                 raise ActorMismatchError("Actor on delete does not match object")
-            if (
+            if post.type == "Article" or (
                 post.type_data
                 and "object" in post.type_data
                 and "relatedWith" in post.type_data.get("object", {})
             ):
+                # NeoDB-managed posts (Reviews/Comments via ``relatedWith``,
+                # plus standalone Articles which deliberately omit it) need
+                # the post_deleted callback so the linked Piece row + search
+                # document are cleaned up; otherwise we orphan them.
                 settings.NEODB_MQ.enqueue(
                     "takahe.ap_handlers.post_deleted",
                     post.pk,
                     False,
-                    post.type_data["object"],
+                    post.type_data["object"] if post.type_data else {},
                 )
             post.delete()
 
