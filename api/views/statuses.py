@@ -210,11 +210,17 @@ def edit_status(request, id: str, details: EditStatusSchema) -> schemas.Status:
     post = post_for_id(request, id)
     if post.author != request.identity:
         raise ApiError(401, "Not the author of this status")
-    if (
-        post.type_data
-        and post.in_reply_to is None
-        and post.type_data.get("object", {}).get("relatedWith")
+    if post.in_reply_to is None and (
+        post.type == "Article"
+        or (
+            post.type_data
+            and post.type_data.get("object", {}).get("relatedWith")
+        )
     ):
+        # NeoDB-managed structured posts (Reviews via relatedWith, and
+        # standalone Articles) cannot be edited via Mastodon API without
+        # corrupting the source markdown / metadata; users must edit them
+        # in NeoDB.
         raise ApiError(422, "This post must be edited in NeoDB")
     # Grab attachments
     attachments = [get_object_or_404(PostAttachment, pk=id) for id in details.media_ids]
