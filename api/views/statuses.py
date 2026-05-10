@@ -212,10 +212,7 @@ def edit_status(request, id: str, details: EditStatusSchema) -> schemas.Status:
         raise ApiError(401, "Not the author of this status")
     if post.in_reply_to is None and (
         post.type == "Article"
-        or (
-            post.type_data
-            and post.type_data.get("object", {}).get("relatedWith")
-        )
+        or (post.type_data and post.type_data.get("object", {}).get("relatedWith"))
     ):
         # NeoDB-managed structured posts (Reviews via relatedWith, and
         # standalone Articles) cannot be edited via Mastodon API without
