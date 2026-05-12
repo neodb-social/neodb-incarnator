@@ -3,11 +3,11 @@ import time
 from datetime import date, timedelta
 
 import urlman
+from core.models import Config
 from django.conf import settings
 from django.db import connection, models, transaction
+from django.db.models.functions import TruncDate
 from django.utils import timezone
-
-from core.models import Config
 from stator.models import State, StateField, StateGraph, StatorModel
 
 
@@ -25,33 +25,58 @@ class HashtagStates(StateGraph):
         """
         from .post import Post
 
-        posts_query = Post.objects.local_public().tagged_with(instance)
-        total = posts_query.count()
-
         today = timezone.now().date()
-        total_today = posts_query.filter(created__date=today).count()
-        total_month = posts_query.filter(
-            created__year=today.year,
-            created__month=today.month,
-        ).count()
-        total_year = posts_query.filter(
-            created__year=today.year,
-        ).count()
+        # Collapse total / today / month / year into a single conditional
+        # aggregate so we hit the DB once instead of four times per hashtag
+        # transition (fired thousands of times daily by the stator loop).
+        totals = (
+            Post.objects.local_public()
+            .tagged_with(instance)
+            .aggregate(
+                total=models.Count("id"),
+                total_today=models.Count("id", filter=models.Q(created__date=today)),
+                total_month=models.Count(
+                    "id",
+                    filter=models.Q(
+                        created__year=today.year,
+                        created__month=today.month,
+                    ),
+                ),
+                total_year=models.Count(
+                    "id", filter=models.Q(created__year=today.year)
+                ),
+            )
+        )
+        total = totals["total"]
+        total_today = totals["total_today"]
+        total_month = totals["total_month"]
+        total_year = totals["total_year"]
 
-        history = []
-        tagged_posts = Post.objects.not_hidden().tagged_with(instance)
-        for i in range(8):
-            # Mastodon doesn't include today in history (let's do it anyway)
-            day = today - timedelta(days=i)
-            data = tagged_posts.filter(published__date=day).aggregate(
+        # Mastodon doesn't include today in history (let's do it anyway).
+        # One GROUP BY per-day aggregate over the 8-day window replaces the
+        # previous 8 separate filter().aggregate() calls.
+        history_start = today - timedelta(days=7)
+        history_rows = (
+            Post.objects.not_hidden()
+            .tagged_with(instance)
+            .annotate(_day=TruncDate("published"))
+            .filter(_day__gte=history_start, _day__lte=today)
+            .values("_day")
+            .annotate(
                 total=models.Count("id"),
                 num_authors=models.Count("author", distinct=True),
             )
+        )
+        by_day = {row["_day"]: row for row in history_rows}
+        history = []
+        for i in range(8):
+            day = today - timedelta(days=i)
+            data = by_day.get(day)
             history.append(
                 {
                     "day": str(int(time.mktime(day.timetuple()))),
-                    "uses": str(data["total"]),
-                    "accounts": str(data["num_authors"]),
+                    "uses": str(data["total"]) if data else "0",
+                    "accounts": str(data["num_authors"]) if data else "0",
                 }
             )
 
