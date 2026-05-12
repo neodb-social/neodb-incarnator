@@ -402,6 +402,59 @@ def test_by_ap_attributed_to_object(remote_identity):
 
 
 @pytest.mark.django_db
+def test_by_ap_attributed_to_list(remote_identity):
+    """
+    Tests that by_ap handles attributedTo as a list of URIs. WriteFreely
+    blog Articles ship ``attributedTo: [author_person, blog_group]`` and
+    we should accept that, taking the first entry (the author) as the
+    canonical Identity.
+    """
+    post = Post.by_ap(
+        data={
+            "id": "https://remote.test/posts/writefreely-1/",
+            "type": "Article",
+            "name": "Hello",
+            "content": "Hello from WriteFreely",
+            "attributedTo": [
+                "https://remote.test/test-actor/",
+                "https://remote.test/blog-group/",
+            ],
+            "published": "2026-05-08T11:35:17Z",
+        },
+        create=True,
+    )
+    assert post.content == "Hello from WriteFreely"
+    assert post.author.actor_uri == "https://remote.test/test-actor/"
+
+
+@pytest.mark.django_db
+def test_by_ap_attributed_to_list_reversed_prefers_known_person(remote_identity):
+    """
+    If a server inverts the WriteFreely convention to ``[blog, author]``,
+    we should still attribute the post to the Person actor when it is
+    already known locally as non-Group. The Group URI is not (yet) a
+    stored Identity, so the cheap DB lookup picks the Person.
+    """
+    # ``remote_identity`` fixture is a Person actor on remote.test.
+    assert remote_identity.actor_type == "person"
+    post = Post.by_ap(
+        data={
+            "id": "https://remote.test/posts/writefreely-rev/",
+            "type": "Article",
+            "name": "Hello",
+            "content": "Hello again",
+            "attributedTo": [
+                "https://remote.test/blog-group/",
+                remote_identity.actor_uri,
+            ],
+            "published": "2026-05-08T11:35:17Z",
+        },
+        create=True,
+    )
+    assert post.author.actor_uri == remote_identity.actor_uri
+
+
+@pytest.mark.django_db
 @pytest.mark.parametrize("delete_type", ["note", "tombstone", "ref"])
 def test_inbound_posts(
     remote_identity: Identity,

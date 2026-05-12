@@ -1121,6 +1121,46 @@ class Post(StatorModel):
 
     ### ActivityPub (inbound) ###
 
+    @staticmethod
+    def _primary_attributed_to(value):
+        """Normalize an AS ``attributedTo`` value to a single URI string.
+
+        Accepts a URI string, an embedded actor object ({"id": ...}), or
+        an array of either. WriteFreely sends ``[author_person, blog_group]``
+        for blog posts and other servers may invert the order, so when
+        given a list we prefer the first URI that already resolves to a
+        non-Group identity locally (cheap DB lookup, no HTTP). If none of
+        the candidates are known yet we fall back to the first URI, which
+        matches the WriteFreely convention. Returns ``None`` for anything
+        unrecognizable so the caller's structural check can raise.
+        """
+        if isinstance(value, list):
+            uris: list[str] = []
+            for v in value:
+                if isinstance(v, dict):
+                    v = v.get("id")
+                if isinstance(v, str):
+                    uris.append(v)
+            if not uris:
+                return None
+            # Pick the first candidate already known locally that's not
+            # a Group/Organization. Stays robust if the author has been
+            # seen previously (e.g. fetched as a follow or earlier post),
+            # regardless of the order the upstream emits the list.
+            known = (
+                Identity.objects.filter(actor_uri__in=uris)
+                .exclude(actor_type__in=["group", "organization"])
+                .values_list("actor_uri", flat=True)
+            )
+            known_set = set(known)
+            for uri in uris:
+                if uri in known_set:
+                    return uri
+            return uris[0]
+        if isinstance(value, dict):
+            value = value.get("id")
+        return value if isinstance(value, str) else None
+
     @classmethod
     def by_ap(cls, data, create=False, update=False, fetch_author=False) -> "Post":
         """
@@ -1131,10 +1171,12 @@ class Post(StatorModel):
         or it's from a blocked domain.
         """
         try:
-            # Normalize attributedTo from object to URI string
-            # (per ActivityStreams spec, attributedTo can be an object or a URI)
-            if isinstance(data.get("attributedTo"), dict):
-                data["attributedTo"] = data["attributedTo"]["id"]
+            # Normalize attributedTo to a single URI string. Per the
+            # ActivityStreams spec it may be a URI, an embedded actor
+            # object, or an array of either. WriteFreely emits
+            # ``[author_person, blog_group]`` for blog posts; the author
+            # is conventionally first, so we take the head.
+            data["attributedTo"] = cls._primary_attributed_to(data.get("attributedTo"))
             # Ensure data has the primary fields of all Posts
             if (
                 not isinstance(data["id"], str)
@@ -1476,11 +1518,17 @@ class Post(StatorModel):
         from . import TimelineEvent
 
         with transaction.atomic():
-            # Ensure the Create actor is the Post's attributedTo
-            attributedTo = data["object"]["attributedTo"]
-            if isinstance(attributedTo, dict):
-                attributedTo = attributedTo["id"]
-            if data["actor"] != attributedTo:
+            # Ensure the Create actor is among the Post's attributedTo
+            # entries. WriteFreely sends a list ``[author, blog]`` and the
+            # outer ``actor`` may be either one; accept any match rather
+            # than only the first URI.
+            attributed = data["object"]["attributedTo"]
+            if not isinstance(attributed, list):
+                attributed = [attributed]
+            attributed_ids = {cls._primary_attributed_to(v) for v in attributed} - {
+                None
+            }
+            if data["actor"] not in attributed_ids:
                 raise ActorMismatchError(
                     "Create actor does not match its Post object", data
                 )
@@ -1498,11 +1546,16 @@ class Post(StatorModel):
         Handles an incoming update request
         """
         with transaction.atomic():
-            # Ensure the Create actor is the Post's attributedTo
-            attributedTo = data["object"]["attributedTo"]
-            if isinstance(attributedTo, dict):
-                attributedTo = attributedTo["id"]
-            if data["actor"] != attributedTo:
+            # Ensure the Update actor is among the Post's attributedTo
+            # entries (see ``handle_create_ap`` for the WriteFreely-list
+            # rationale).
+            attributed = data["object"]["attributedTo"]
+            if not isinstance(attributed, list):
+                attributed = [attributed]
+            attributed_ids = {cls._primary_attributed_to(v) for v in attributed} - {
+                None
+            }
+            if data["actor"] not in attributed_ids:
                 raise ActorMismatchError(
                     "Update actor does not match its Post object", data
                 )
