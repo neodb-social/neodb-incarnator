@@ -415,6 +415,7 @@ def test_by_ap_attributed_to_list(remote_identity):
             "type": "Article",
             "name": "Hello",
             "content": "Hello from WriteFreely",
+            "summary": "<p>Hello from WriteFreely excerpt</p>",
             "attributedTo": [
                 "https://remote.test/test-actor/",
                 "https://remote.test/blog-group/",
@@ -425,6 +426,15 @@ def test_by_ap_attributed_to_list(remote_identity):
     )
     assert post.content == "Hello from WriteFreely"
     assert post.author.actor_uri == "https://remote.test/test-actor/"
+    # Article posts must keep the full AS object on ``type_data`` (under an
+    # ``object`` key, matching local NeoDB Articles and ``relatedWith``
+    # envelopes) so downstream renderers can read ``name`` / ``summary`` for
+    # title-card teasers. Stripping to ``ArticleData`` -- as the previous
+    # path did -- dropped the title entirely and made write.as / WriteFreely
+    # articles unrenderable in the timeline.
+    assert isinstance(post.type_data, dict)
+    assert post.type_data["object"]["name"] == "Hello"
+    assert post.type_data["object"]["summary"] == "<p>Hello from WriteFreely excerpt</p>"
 
 
 @pytest.mark.django_db

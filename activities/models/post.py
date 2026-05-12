@@ -1238,9 +1238,14 @@ class Post(StatorModel):
         if update or created:
             post.type = data["type"]
             post.url = data.get("url", data["id"])
-            if post.type in (cls.Types.article, cls.Types.question):
+            if post.type == cls.Types.question:
                 post.type_data = PostTypeData(root=data).root
-            if "relatedWith" in data:
+            elif post.type == cls.Types.article or "relatedWith" in data:
+                # Preserve the full AS Article (name, summary, source, url,
+                # tags, etc.) so the NeoDB Post-only renderer can show a
+                # title-card teaser without a local Article row. Mirrors the
+                # ``{"object": data}`` shape used by NeoDB's relatedWith
+                # envelopes (Reviews/Marks) and by locally-authored Articles.
                 post.type_data = {"object": data}
             try:
                 # apparently sometimes posts (Pages?) in the fediverse
