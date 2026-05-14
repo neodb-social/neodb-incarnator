@@ -22,8 +22,7 @@ def test_search_url_follows_ap_alternate(monkeypatch, config_system):
         headers={
             "Content-Type": "text/html; charset=UTF-8",
             "Link": (
-                f'<{ap_object_url}>; rel="alternate"; '
-                'type="application/activity+json"'
+                f'<{ap_object_url}>; rel="alternate"; type="application/activity+json"'
             ),
         },
         content=b"<html><body>not JSON</body></html>",

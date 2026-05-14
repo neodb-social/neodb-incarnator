@@ -21,14 +21,12 @@ def test_find_ap_alternate_from_link_header():
             ("content-type", "text/html; charset=UTF-8"),
             (
                 "link",
-                '<https://blog.example/?p=15463>; '
+                "<https://blog.example/?p=15463>; "
                 'rel="alternate"; type="application/activity+json"',
             ),
         ],
     )
-    assert (
-        find_ap_alternate(response) == "https://blog.example/?p=15463"
-    )
+    assert find_ap_alternate(response) == "https://blog.example/?p=15463"
 
 
 def test_find_ap_alternate_picks_ap_among_multiple_alternates():

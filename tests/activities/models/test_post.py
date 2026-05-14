@@ -434,7 +434,9 @@ def test_by_ap_attributed_to_list(remote_identity):
     # articles unrenderable in the timeline.
     assert isinstance(post.type_data, dict)
     assert post.type_data["object"]["name"] == "Hello"
-    assert post.type_data["object"]["summary"] == "<p>Hello from WriteFreely excerpt</p>"
+    assert (
+        post.type_data["object"]["summary"] == "<p>Hello from WriteFreely excerpt</p>"
+    )
 
 
 @pytest.mark.django_db
