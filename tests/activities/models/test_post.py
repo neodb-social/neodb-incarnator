@@ -294,6 +294,58 @@ def test_content_map(remote_identity):
 
 
 @pytest.mark.django_db
+def test_quote_url_only_accepts_urls(remote_identity):
+    """
+    FEP-044f `quote` is a URL. BookWyrm Quotation objects overload the key
+    with HTML quotation text - rejecting non-URL strings prevents the post
+    save from blowing up the varchar(2048) quote_url column.
+    """
+    bookwyrm_quote_html = (
+        "<p>" + ("Car le totalitarisme politique n'est pas la forme " * 100) + "</p>"
+    )
+    assert len(bookwyrm_quote_html) > 2048
+
+    post = Post.by_ap(
+        data={
+            "id": "https://remote.test/user/u/quotation/1",
+            "type": "Note",
+            "content": "<p>see quote</p>",
+            "quote": bookwyrm_quote_html,
+            "attributedTo": "https://remote.test/test-actor/",
+            "published": "2026-05-15T10:00:00Z",
+        },
+        create=True,
+    )
+    assert post.quote_url is None
+
+    post2 = Post.by_ap(
+        data={
+            "id": "https://remote.test/posts/quote-url/",
+            "type": "Note",
+            "content": "<p>real quote</p>",
+            "quote": "https://other.test/posts/42",
+            "attributedTo": "https://remote.test/test-actor/",
+            "published": "2026-05-15T10:00:00Z",
+        },
+        create=True,
+    )
+    assert post2.quote_url == "https://other.test/posts/42"
+
+    post3 = Post.by_ap(
+        data={
+            "id": "https://remote.test/posts/quote-link/",
+            "type": "Note",
+            "content": "<p>linked quote</p>",
+            "quote": {"id": "https://other.test/posts/43", "type": "Link"},
+            "attributedTo": "https://remote.test/test-actor/",
+            "published": "2026-05-15T10:00:00Z",
+        },
+        create=True,
+    )
+    assert post3.quote_url == "https://other.test/posts/43"
+
+
+@pytest.mark.django_db
 def test_content_map_question(remote_identity: Identity):
     """
     Tests post contentmap for questions

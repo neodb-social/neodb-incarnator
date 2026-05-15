@@ -58,6 +58,19 @@ from activities.models.post_types import (
 
 logger = logging.getLogger(__name__)
 
+# Post.quote_url column width; URLs longer than this are rejected to avoid
+# Postgres truncation errors (BookWyrm Quotation objects, for example, send
+# the HTML quotation text under the `quote` key).
+_QUOTE_URI_MAX_LENGTH = 2048
+
+
+def _is_quote_uri(value: str) -> bool:
+    return (
+        bool(value)
+        and value.startswith(("https://", "http://"))
+        and len(value) <= _QUOTE_URI_MAX_LENGTH
+    )
+
 
 def _attach_preview_card(post_pk: int, content: str) -> None:
     """
@@ -1266,30 +1279,35 @@ class Post(StatorModel):
             if isinstance(in_reply_to, dict):
                 in_reply_to = in_reply_to.get("id")
             post.in_reply_to = in_reply_to
-            # Quote URL - check properties in priority order (FEP-044f)
+            # Quote URL - check properties in priority order (FEP-044f).
+            # BookWyrm overloads `quote` with the HTML quotation text rather
+            # than a URL, so only accept http(s) URLs that fit the column.
             post.quote_url = None
             for key in ("quote", "_misskey_quote", "quoteUrl", "quoteUri"):
                 val = data.get(key)
-                if isinstance(val, str) and val:
-                    post.quote_url = val
+                if isinstance(val, str):
+                    if _is_quote_uri(val):
+                        post.quote_url = val
                     break
                 elif isinstance(val, dict):
                     if val.get("type") == "Tombstone":
                         break
                     uri = val.get("id")
-                    if uri:
+                    if isinstance(uri, str) and _is_quote_uri(uri):
                         post.quote_url = uri
                     break
             # FEP-e232 tag Link fallback
             if not post.quote_url:
                 for tag in get_list(data, "tag"):
+                    href = tag.get("href")
                     if (
                         tag.get("type") == "Link"
                         and isinstance(tag.get("mediaType"), str)
                         and tag["mediaType"].startswith("application/ld+json")
-                        and tag.get("href")
+                        and isinstance(href, str)
+                        and _is_quote_uri(href)
                     ):
-                        post.quote_url = tag["href"]
+                        post.quote_url = href
                         break
             # Strip FEP-044f fallback quote-inline span from content
             if post.quote_url:
