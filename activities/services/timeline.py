@@ -108,7 +108,7 @@ class TimelineService:
             notify_ids = list(
                 self.identity.outbound_follows.active()
                 .filter(notify=True)
-                .values_list("id", flat=True)
+                .values_list("target_id", flat=True)
             )
         if notify_ids:
             q = models.Q(type__in=filter_types) | (
