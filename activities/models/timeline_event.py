@@ -83,6 +83,13 @@ class TimelineEvent(models.Model):
             ),
             models.Index(fields=["identity", "type", "subject_identity"]),
             models.Index(fields=["identity", "created"]),
+            # Supports the Mastodon /api/v1/notifications paginator which
+            # filters by identity + dismissed=false and orders by id DESC.
+            models.Index(
+                fields=["identity", "-id"],
+                condition=models.Q(dismissed=False),
+                name="te_identity_idneg_undismissed",
+            ),
         ]
 
     ### Alternate constructors ###

@@ -97,15 +97,20 @@ class TimelineService:
 
     def notifications(self, types: list[str]) -> models.QuerySet[TimelineEvent]:
         filter_types = set(types)
+        notify_ids: list[int] = []
         if "post" in types:
-            # If post notifications are requested, only show from accounts we're following with
-            # `notify=True` set.
+            # If post notifications are requested, only show from accounts we're
+            # following with `notify=True` set. Materialize the IDs so the main
+            # query stays a flat IN list instead of becoming a correlated
+            # OR-with-subquery, which the planner can't combine with the
+            # existing TimelineEvent indexes.
             filter_types.discard("post")
-            notify_ids = (
+            notify_ids = list(
                 self.identity.outbound_follows.active()
                 .filter(notify=True)
                 .values_list("id", flat=True)
             )
+        if notify_ids:
             q = models.Q(type__in=filter_types) | (
                 models.Q(type="post") & models.Q(subject_identity_id__in=notify_ids)
             )
