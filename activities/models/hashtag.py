@@ -1,6 +1,6 @@
 import re
 import time
-from datetime import date, timedelta
+from datetime import date, datetime, timedelta
 
 import urlman
 from core.models import Config
@@ -26,6 +26,22 @@ class HashtagStates(StateGraph):
         from .post import Post
 
         today = timezone.now().date()
+        # Use timezone-aware datetime ranges instead of __date / __year /
+        # __month lookups so the FILTER predicates are plain timestamp
+        # comparisons instead of per-row AT TIME ZONE / EXTRACT calls
+        # (NEODB-SOCIAL-4QR -- single aggregate was hitting ~800ms on
+        # popular hashtags because each candidate row had to be cast).
+        today_start = timezone.make_aware(datetime(today.year, today.month, today.day))
+        tomorrow_start = today_start + timedelta(days=1)
+        month_start = today_start.replace(day=1)
+        if today.month == 12:
+            next_month_start = timezone.make_aware(datetime(today.year + 1, 1, 1))
+        else:
+            next_month_start = timezone.make_aware(
+                datetime(today.year, today.month + 1, 1)
+            )
+        year_start = timezone.make_aware(datetime(today.year, 1, 1))
+        next_year_start = timezone.make_aware(datetime(today.year + 1, 1, 1))
         # Collapse total / today / month / year into a single conditional
         # aggregate so we hit the DB once instead of four times per hashtag
         # transition (fired thousands of times daily by the stator loop).
@@ -34,16 +50,23 @@ class HashtagStates(StateGraph):
             .tagged_with(instance)
             .aggregate(
                 total=models.Count("id"),
-                total_today=models.Count("id", filter=models.Q(created__date=today)),
+                total_today=models.Count(
+                    "id",
+                    filter=models.Q(
+                        created__gte=today_start, created__lt=tomorrow_start
+                    ),
+                ),
                 total_month=models.Count(
                     "id",
                     filter=models.Q(
-                        created__year=today.year,
-                        created__month=today.month,
+                        created__gte=month_start, created__lt=next_month_start
                     ),
                 ),
                 total_year=models.Count(
-                    "id", filter=models.Q(created__year=today.year)
+                    "id",
+                    filter=models.Q(
+                        created__gte=year_start, created__lt=next_year_start
+                    ),
                 ),
             )
         )
