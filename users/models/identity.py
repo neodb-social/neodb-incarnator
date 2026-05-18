@@ -768,7 +768,7 @@ class Identity(StatorModel):
         object = self.to_ap()
         return {
             "type": "Update",
-            "id": self.actor_uri + "#update",
+            "id": f"{self.actor_uri}#updates/{int(self.updated.timestamp())}",
             "actor": self.actor_uri,
             "object": object,
         }
@@ -780,7 +780,7 @@ class Identity(StatorModel):
         object = self.to_ap()
         return {
             "type": "Delete",
-            "id": self.actor_uri + "#delete",
+            "id": f"{self.actor_uri}#deletes/{int(self.updated.timestamp())}",
             "actor": self.actor_uri,
             "object": object,
         }
@@ -791,7 +791,7 @@ class Identity(StatorModel):
         """
         return {
             "type": "Move",
-            "id": self.actor_uri + "#move-" + str(self.updated),
+            "id": f"{self.actor_uri}#moves/{int(self.updated.timestamp())}",
             "actor": self.actor_uri,
             "object": self.actor_uri,
             "target": self.aliases[0],
