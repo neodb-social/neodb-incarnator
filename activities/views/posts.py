@@ -1,3 +1,5 @@
+from core.decorators import cache_page_by_ap_json
+from core.ld import canonicalise
 from django.conf import settings
 from django.http import Http404, HttpResponse, JsonResponse
 from django.shortcuts import get_object_or_404, redirect
@@ -5,13 +7,11 @@ from django.utils.decorators import method_decorator
 from django.views import View
 from django.views.decorators.vary import vary_on_headers
 from django.views.generic import TemplateView
-
-from activities.models import Post, PostStates
-from activities.services import PostService
-from core.decorators import cache_page_by_ap_json
-from core.ld import canonicalise
-from users.models import Identity
 from users.shortcuts import by_handle_or_404
+
+from activities.models import Post, PostStates, QuoteAuthorization
+from activities.services import PostService
+from users.models import Identity
 
 
 @method_decorator(
@@ -123,5 +123,38 @@ class PostRepliesCollection(View):
         }
         return JsonResponse(
             canonicalise(collection),
+            content_type="application/activity+json",
+        )
+
+
+class QuoteAuthorizationView(View):
+    """
+    Serves a FEP-044f QuoteAuthorization at a dereferenceable URL so that
+    third-party servers can verify quotes of local posts.
+    """
+
+    def get(self, request, handle, post_id, auth_id):
+        if settings.SETUP.NO_FEDERATION:
+            return HttpResponse(status=503)
+        identity = by_handle_or_404(request, handle, local=False)
+        if not identity.local:
+            raise Http404("Not a local identity")
+        auth = get_object_or_404(
+            QuoteAuthorization.objects.select_related(
+                "target_post", "target_post__author"
+            ),
+            pk=auth_id,
+            target_post__pk=post_id,
+            target_post__author=identity,
+        )
+        if not auth.target_post.local:
+            raise Http404("Not a local post")
+        if auth.target_post.state in [
+            PostStates.deleted,
+            PostStates.deleted_fanned_out,
+        ]:
+            raise Http404("Deleted post")
+        return JsonResponse(
+            canonicalise(auth.to_ap(), include_security=True),
             content_type="application/activity+json",
         )

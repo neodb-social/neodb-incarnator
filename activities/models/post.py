@@ -55,6 +55,7 @@ from activities.models.post_types import (
     PostTypeDataEncoder,
     QuestionData,
 )
+from activities.models.quote_authorization import QuoteAuthorization
 
 logger = logging.getLogger(__name__)
 
@@ -1659,21 +1660,18 @@ class Post(StatorModel):
             cls.Visibilities.public,
             cls.Visibilities.unlisted,
         ):
-            auth_id = Snowflake.generate_post()
-            authorization_uri = f"{post.object_uri}#quote-auth-{auth_id}"
+            auth = QuoteAuthorization.objects.create(
+                target_post=post,
+                interacting_object_uri=quoting_post_uri or actor_uri,
+                request_uri=data.get("id"),
+            )
             accept_id = Snowflake.generate_post()
             accept_data = {
                 "type": "Accept",
                 "id": f"{post.author.actor_uri}#accept-{accept_id}",
                 "actor": post.author.actor_uri,
                 "object": data.get("id", actor_uri),
-                "result": {
-                    "type": "QuoteAuthorization",
-                    "id": authorization_uri,
-                    "attributedTo": post.author.actor_uri,
-                    "interactingObject": quoting_post_uri or actor_uri,
-                    "interactionTarget": post.object_uri,
-                },
+                "result": auth.to_ap(),
             }
             try:
                 post.author.signed_request(
