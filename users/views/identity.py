@@ -1,3 +1,4 @@
+import html
 import re
 import string
 from urllib.parse import urlparse
@@ -225,7 +226,13 @@ class IdentityFeed(Feed):
         return txt if len(txt) < 100 else txt[:100] + "..."
 
     def item_description(self, item: Post):
-        return re.sub(r"[\x00-\x08\x0B-\x0C\x0E-\x1F]", "", item.safe_content_remote())
+        content = re.sub(
+            r"[\x00-\x08\x0B-\x0C\x0E-\x1F]", "", item.safe_content_remote()
+        )
+        if item.quote_url:
+            quoted = html.escape(item.quote_url)
+            content += f'<p>Quote: <a href="{quoted}">{quoted}</a></p>'
+        return content
 
     def item_link(self, item: Post):
         return item.absolute_object_uri()
