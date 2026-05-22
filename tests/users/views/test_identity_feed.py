@@ -5,7 +5,7 @@ from users.views.identity import IdentityFeed
 
 
 @pytest.mark.django_db
-def test_item_description_appends_quote_link(identity):
+def test_item_description_appends_quote_link(config_system, identity):
     post = Post.create_local(author=identity, content="Look here")
     post.quote_url = "https://remote.test/posts/abc"
     snippet = '<p>Quote: <a href="https://remote.test/posts/abc">https://remote.test/posts/abc</a></p>'
@@ -13,7 +13,7 @@ def test_item_description_appends_quote_link(identity):
 
 
 @pytest.mark.django_db
-def test_item_description_escapes_quote_url(identity):
+def test_item_description_escapes_quote_url(config_system, identity):
     post = Post.create_local(author=identity, content="Look here")
     post.quote_url = 'https://remote.test/posts/"><script>'
     description = IdentityFeed().item_description(post)
@@ -22,6 +22,6 @@ def test_item_description_escapes_quote_url(identity):
 
 
 @pytest.mark.django_db
-def test_item_description_without_quote(identity):
+def test_item_description_without_quote(config_system, identity):
     post = Post.create_local(author=identity, content="Just a post")
     assert "Quote:" not in IdentityFeed().item_description(post)
