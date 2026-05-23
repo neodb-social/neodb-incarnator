@@ -1,11 +1,11 @@
 import time
 
 import pytest
-from django.test import Client
-
 from api.models import Application, Token
 from core.models import Config
+from django.test import Client
 from stator.runner import StatorModel, StatorRunner
+
 from users.models import Domain, Identity, User
 
 
@@ -54,6 +54,15 @@ kwIDAQAB
 -----END PUBLIC KEY-----""",
         "public_key_id": "https://example.com/test-actor#test-key",
     }
+
+
+@pytest.fixture(autouse=True)
+def _bypass_ssrf_check(monkeypatch):
+    """Disable SSRF DNS check in tests so pytest_httpx mocks work with fake domains."""
+    _noop = lambda request: None  # noqa: E731
+    monkeypatch.setattr("core.files.check_url_safety", _noop)
+    monkeypatch.setattr("core.signatures.check_url_safety", _noop)
+    monkeypatch.setattr("users.models.identity.check_url_safety", _noop)
 
 
 @pytest.fixture(autouse=True)

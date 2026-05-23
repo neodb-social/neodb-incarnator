@@ -1,13 +1,13 @@
+from activities.views import compose, debug, posts, timelines
+from api.views import oauth
+from core import views as core
 from django.conf import settings as djsettings
 from django.contrib import admin as djadmin
 from django.urls import include, path, re_path
 from django.views.generic.base import RedirectView
-
-from activities.views import compose, debug, posts, timelines
-from api.views import oauth
-from core import views as core
 from mediaproxy import views as mediaproxy
 from stator import views as stator
+
 from users.views import activitypub, admin, announcements, auth, identity, settings
 
 urlpatterns = [
@@ -293,6 +293,10 @@ urlpatterns = [
     path("@<handle>/posts/<int:post_id>/", posts.Individual.as_view()),
     path(
         "@<handle>/posts/<int:post_id>/replies/", posts.PostRepliesCollection.as_view()
+    ),
+    path(
+        "@<handle>/posts/<int:post_id>/quote-auth/<int:auth_id>/",
+        posts.QuoteAuthorizationView.as_view(),
     ),
     # Authentication
     path("auth/login/", auth.Login.as_view(), name="login"),

@@ -1,8 +1,17 @@
 import pytest
 
 from activities.models import Post
-from activities.models.post_types import QuestionData
+from activities.models.post_types import QuestionData, QuestionOption
 from core.ld import canonicalise
+
+
+def test_question_option_coalesces_duplicated_name_list():
+    # JSON-LD canonicalisation can duplicate scalar fields into a list when
+    # the remote sends the same value in both `name` and `nameMap` (seen in
+    # the wild from pl.fediverse.pl Question posts).
+    option = QuestionOption(name=["oba", "oba"], replies={"totalItems": 5})
+    assert option.name == "oba"
+    assert option.votes == 5
 
 
 @pytest.mark.django_db

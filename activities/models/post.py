@@ -11,19 +11,6 @@ from urllib.parse import urlparse
 
 import httpx
 import urlman
-from core.exceptions import ActivityPubFormatError
-from core.signatures import LDSignature
-from core.html import ContentRenderer, FediverseHtmlParser
-from core.json import json_from_response
-from core.ld import (
-    canonicalise,
-    format_ld_date,
-    get_language,
-    get_list,
-    get_value_or_map,
-    parse_ld_date,
-)
-from core.snowflake import Snowflake
 from django.conf import settings
 from django.contrib.postgres.indexes import GinIndex
 from django.contrib.postgres.search import SearchVector
@@ -35,15 +22,6 @@ from django.template.defaultfilters import linebreaks_filter
 from django.utils import timezone
 from django.utils.html import strip_tags
 from pyld.jsonld import JsonLdError
-from stator.exceptions import TryAgainLater
-from stator.models import State, StateField, StateGraph, StatorModel
-from users.models.block import Block
-from users.models.follow import FollowStates
-from users.models.hashtags import HashtagFollow
-from users.models.identity import Identity, IdentityStates
-from users.models.inbox_message import InboxMessage
-from users.models.relay import Relay
-from users.models.system_actor import SystemActor
 
 from activities.models.emoji import Emoji
 from activities.models.fan_out import FanOut
@@ -54,8 +32,44 @@ from activities.models.post_types import (
     PostTypeDataEncoder,
     QuestionData,
 )
+from activities.models.quote_authorization import QuoteAuthorization
+from core.exceptions import ActivityPubFormatError, ActorMismatchError
+from core.html import ContentRenderer, FediverseHtmlParser
+from core.json import json_from_response
+from core.ld import (
+    canonicalise,
+    format_ld_date,
+    get_language,
+    get_list,
+    get_value_or_map,
+    parse_ld_date,
+)
+from core.signatures import LDSignature
+from core.snowflake import Snowflake
+from stator.exceptions import TryAgainLater
+from stator.models import State, StateField, StateGraph, StatorModel
+from users.models.block import Block
+from users.models.follow import FollowStates
+from users.models.hashtags import HashtagFollow
+from users.models.identity import Identity, IdentityStates
+from users.models.inbox_message import InboxMessage
+from users.models.relay import Relay
+from users.models.system_actor import SystemActor
 
 logger = logging.getLogger(__name__)
+
+# Post.quote_url column width; URLs longer than this are rejected to avoid
+# Postgres truncation errors (BookWyrm Quotation objects, for example, send
+# the HTML quotation text under the `quote` key).
+_QUOTE_URI_MAX_LENGTH = 2048
+
+
+def _is_quote_uri(value: str) -> bool:
+    return (
+        bool(value)
+        and value.startswith(("https://", "http://"))
+        and len(value) <= _QUOTE_URI_MAX_LENGTH
+    )
 
 
 def _attach_preview_card(post_pk: int, content: str) -> None:
@@ -648,7 +662,6 @@ class Post(StatorModel):
         }
 
     ### Local creation/editing ###
-
     @classmethod
     def create_local(
         cls,
@@ -1092,6 +1105,46 @@ class Post(StatorModel):
 
     ### ActivityPub (inbound) ###
 
+    @staticmethod
+    def _primary_attributed_to(value):
+        """Normalize an AS ``attributedTo`` value to a single URI string.
+
+        Accepts a URI string, an embedded actor object ({"id": ...}), or
+        an array of either. WriteFreely sends ``[author_person, blog_group]``
+        for blog posts and other servers may invert the order, so when
+        given a list we prefer the first URI that already resolves to a
+        non-Group identity locally (cheap DB lookup, no HTTP). If none of
+        the candidates are known yet we fall back to the first URI, which
+        matches the WriteFreely convention. Returns ``None`` for anything
+        unrecognizable so the caller's structural check can raise.
+        """
+        if isinstance(value, list):
+            uris: list[str] = []
+            for v in value:
+                if isinstance(v, dict):
+                    v = v.get("id")
+                if isinstance(v, str):
+                    uris.append(v)
+            if not uris:
+                return None
+            # Pick the first candidate already known locally that's not
+            # a Group/Organization. Stays robust if the author has been
+            # seen previously (e.g. fetched as a follow or earlier post),
+            # regardless of the order the upstream emits the list.
+            known = (
+                Identity.objects.filter(actor_uri__in=uris)
+                .exclude(actor_type__in=["group", "organization"])
+                .values_list("actor_uri", flat=True)
+            )
+            known_set = set(known)
+            for uri in uris:
+                if uri in known_set:
+                    return uri
+            return uris[0]
+        if isinstance(value, dict):
+            value = value.get("id")
+        return value if isinstance(value, str) else None
+
     @classmethod
     def by_ap(cls, data, create=False, update=False, fetch_author=False) -> "Post":
         """
@@ -1102,10 +1155,12 @@ class Post(StatorModel):
         or it's from a blocked domain.
         """
         try:
-            # Normalize attributedTo from object to URI string
-            # (per ActivityStreams spec, attributedTo can be an object or a URI)
-            if isinstance(data.get("attributedTo"), dict):
-                data["attributedTo"] = data["attributedTo"]["id"]
+            # Normalize attributedTo to a single URI string. Per the
+            # ActivityStreams spec it may be a URI, an embedded actor
+            # object, or an array of either. WriteFreely emits
+            # ``[author_person, blog_group]`` for blog posts; the author
+            # is conventionally first, so we take the head.
+            data["attributedTo"] = cls._primary_attributed_to(data.get("attributedTo"))
             # Ensure data has the primary fields of all Posts
             if (
                 not isinstance(data["id"], str)
@@ -1115,7 +1170,9 @@ class Post(StatorModel):
                 raise TypeError()
             # Ensure the domain of the object's actor and ID match to prevent injection
             if urlparse(data["id"]).hostname != urlparse(data["attributedTo"]).hostname:
-                raise ValueError("Object's ID domain is different to its author")
+                raise ActivityPubFormatError(
+                    "Object's ID domain is different to its author"
+                )
         except (TypeError, KeyError) as ex:
             raise cls.DoesNotExist(
                 "Object data is not a recognizable ActivityPub object"
@@ -1165,8 +1222,13 @@ class Post(StatorModel):
         if update or created:
             post.type = data["type"]
             post.url = data.get("url", data["id"])
-            if post.type in (cls.Types.article, cls.Types.question):
+            if post.type == cls.Types.question:
                 post.type_data = PostTypeData(root=data).root
+            elif post.type == cls.Types.article:
+                # Preserve the full AS Article (name, summary, source, url,
+                # tags, etc.) so the Post-only renderer can show a title-card
+                # teaser without a local Article row.
+                post.type_data = {"object": data}
             try:
                 # apparently sometimes posts (Pages?) in the fediverse
                 # don't have content, but this shouldn't be a total failure
@@ -1186,30 +1248,35 @@ class Post(StatorModel):
             if isinstance(in_reply_to, dict):
                 in_reply_to = in_reply_to.get("id")
             post.in_reply_to = in_reply_to
-            # Quote URL - check properties in priority order (FEP-044f)
+            # Quote URL - check properties in priority order (FEP-044f).
+            # BookWyrm overloads `quote` with the HTML quotation text rather
+            # than a URL, so only accept http(s) URLs that fit the column.
             post.quote_url = None
             for key in ("quote", "_misskey_quote", "quoteUrl", "quoteUri"):
                 val = data.get(key)
-                if isinstance(val, str) and val:
-                    post.quote_url = val
+                if isinstance(val, str):
+                    if _is_quote_uri(val):
+                        post.quote_url = val
                     break
                 elif isinstance(val, dict):
                     if val.get("type") == "Tombstone":
                         break
                     uri = val.get("id")
-                    if uri:
+                    if isinstance(uri, str) and _is_quote_uri(uri):
                         post.quote_url = uri
                     break
             # FEP-e232 tag Link fallback
             if not post.quote_url:
                 for tag in get_list(data, "tag"):
+                    href = tag.get("href")
                     if (
                         tag.get("type") == "Link"
                         and isinstance(tag.get("mediaType"), str)
                         and tag["mediaType"].startswith("application/ld+json")
-                        and tag.get("href")
+                        and isinstance(href, str)
+                        and _is_quote_uri(href)
                     ):
-                        post.quote_url = tag["href"]
+                        post.quote_url = href
                         break
             # Strip FEP-044f fallback quote-inline span from content
             if post.quote_url:
@@ -1334,7 +1401,7 @@ class Post(StatorModel):
                     replies_uri = replies
                 elif isinstance(replies, dict):
                     replies_uri = replies.get("id")
-                if replies_uri and "://" in replies_uri:
+                if replies_uri and replies_uri.startswith(("https://", "http://")):
                     InboxMessage.create_internal(
                         {
                             "type": "FetchReplies",
@@ -1360,7 +1427,12 @@ class Post(StatorModel):
                     response = (fetch_as or SystemActor()).signed_request(
                         method="get", uri=object_uri
                     )
-                except (httpx.HTTPError, ssl.SSLCertVerificationError, ValueError):
+                except (
+                    httpx.HTTPError,
+                    ssl.SSLCertVerificationError,
+                    ValueError,
+                    TypeError,
+                ):
                     raise cls.DoesNotExist(f"Could not fetch {object_uri}")
                 if response.status_code in [404, 410]:
                     raise cls.DoesNotExist(f"No post at {object_uri}")
@@ -1434,12 +1506,20 @@ class Post(StatorModel):
         from . import TimelineEvent
 
         with transaction.atomic():
-            # Ensure the Create actor is the Post's attributedTo
-            attributedTo = data["object"]["attributedTo"]
-            if isinstance(attributedTo, dict):
-                attributedTo = attributedTo["id"]
-            if data["actor"] != attributedTo:
-                raise ValueError("Create actor does not match its Post object", data)
+            # Ensure the Create actor is among the Post's attributedTo
+            # entries. WriteFreely sends a list ``[author, blog]`` and the
+            # outer ``actor`` may be either one; accept any match rather
+            # than only the first URI.
+            attributed = data["object"]["attributedTo"]
+            if not isinstance(attributed, list):
+                attributed = [attributed]
+            attributed_ids = {cls._primary_attributed_to(v) for v in attributed} - {
+                None
+            }
+            if data["actor"] not in attributed_ids:
+                raise ActorMismatchError(
+                    "Create actor does not match its Post object", data
+                )
             # Create it, stator will fan it out locally
             post = cls.by_ap(
                 data["object"], create=True, update=True, fetch_author=True
@@ -1454,12 +1534,19 @@ class Post(StatorModel):
         Handles an incoming update request
         """
         with transaction.atomic():
-            # Ensure the Create actor is the Post's attributedTo
-            attributedTo = data["object"]["attributedTo"]
-            if isinstance(attributedTo, dict):
-                attributedTo = attributedTo["id"]
-            if data["actor"] != attributedTo:
-                raise ValueError("Create actor does not match its Post object", data)
+            # Ensure the Update actor is among the Post's attributedTo
+            # entries (see ``handle_create_ap`` for the WriteFreely-list
+            # rationale).
+            attributed = data["object"]["attributedTo"]
+            if not isinstance(attributed, list):
+                attributed = [attributed]
+            attributed_ids = {cls._primary_attributed_to(v) for v in attributed} - {
+                None
+            }
+            if data["actor"] not in attributed_ids:
+                raise ActorMismatchError(
+                    "Update actor does not match its Post object", data
+                )
             # Find it and update it
             try:
                 cls.by_ap(data["object"], create=False, update=True)
@@ -1486,7 +1573,7 @@ class Post(StatorModel):
                 return
             # Ensure the actor on the request authored the post
             if not post.author.actor_uri == data["actor"]:
-                raise ValueError("Actor on delete does not match object")
+                raise ActorMismatchError("Actor on delete does not match object")
             post.delete()
 
     @classmethod
@@ -1522,21 +1609,18 @@ class Post(StatorModel):
             cls.Visibilities.public,
             cls.Visibilities.unlisted,
         ):
-            auth_id = Snowflake.generate_post()
-            authorization_uri = f"{post.object_uri}#quote-auth-{auth_id}"
+            auth = QuoteAuthorization.objects.create(
+                target_post=post,
+                interacting_object_uri=quoting_post_uri or actor_uri,
+                request_uri=data.get("id"),
+            )
             accept_id = Snowflake.generate_post()
             accept_data = {
                 "type": "Accept",
                 "id": f"{post.author.actor_uri}#accept-{accept_id}",
                 "actor": post.author.actor_uri,
                 "object": data.get("id", actor_uri),
-                "result": {
-                    "type": "QuoteAuthorization",
-                    "id": authorization_uri,
-                    "attributedTo": post.author.actor_uri,
-                    "interactingObject": quoting_post_uri or actor_uri,
-                    "interactionTarget": post.object_uri,
-                },
+                "result": auth.to_ap(),
             }
             try:
                 post.author.signed_request(
@@ -1572,8 +1656,10 @@ class Post(StatorModel):
         try:
             uri = data["object"]
             depth = data.get("depth", 0)
-            if "://" in uri:
+            if uri.startswith(("https://", "http://")):
                 cls.by_object_uri(uri, fetch=True, fetch_depth=depth)
+            else:
+                logger.warning("Skipping fetch for non-HTTP URI: %s", uri)
         except (cls.DoesNotExist, KeyError):
             pass
 
@@ -1586,7 +1672,10 @@ class Post(StatorModel):
         reply URI not already in the local database.
         """
         replies_uri = data.get("object")
-        if not replies_uri or "://" not in replies_uri:
+        if not replies_uri or not replies_uri.startswith(("https://", "http://")):
+            logger.warning(
+                "Skipping fetch for non-HTTP URI: %s", replies_uri or "<empty>"
+            )
             return
 
         try:

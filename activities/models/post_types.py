@@ -20,6 +20,10 @@ class QuestionOption(BaseModel):
     def __init__(self, **data) -> None:
         if "name" not in data:
             data["name"] = list((data.get("nameMap", {}) or {"": ""}).values())[0]
+        # JSON-LD canonicalisation may yield a list when `name` and `nameMap`
+        # carry the same value (e.g. pl.fediverse.pl polls).
+        if isinstance(data["name"], list):
+            data["name"] = data["name"][0] if data["name"] else ""
         data["votes"] = data.get("votes", data.get("replies", {}).get("totalItems", 0))
         super().__init__(**data)
 

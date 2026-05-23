@@ -2,12 +2,13 @@ import logging
 from typing import Optional
 
 import httpx
-from django.db import models, transaction
-from django.db.models.signals import post_delete, post_save
-
+from core.exceptions import ActorMismatchError
 from core.ld import canonicalise, get_str_or_id
 from core.snowflake import Snowflake
+from django.db import models, transaction
+from django.db.models.signals import post_delete, post_save
 from stator.models import State, StateField, StateGraph, StatorModel
+
 from users.models.block import Block
 from users.models.identity import Identity
 from users.models.inbox_message import InboxMessage
@@ -390,7 +391,9 @@ class Follow(StatorModel):
 
         # Ensure the Accept actor is the Follow's target
         if data["actor"] != follow.target.actor_uri:
-            raise ValueError("Accept actor does not match its Follow object", data)
+            raise ActorMismatchError(
+                "Accept actor does not match its Follow object", data
+            )
         # If the follow was waiting to be accepted, transition it
         if follow and follow.state == FollowStates.pending_approval:
             follow.transition_perform(FollowStates.accepting)
@@ -412,7 +415,9 @@ class Follow(StatorModel):
 
         # Ensure the Accept actor is the Follow's target
         if data["actor"] != follow.target.actor_uri:
-            raise ValueError("Reject actor does not match its Follow object", data)
+            raise ActorMismatchError(
+                "Reject actor does not match its Follow object", data
+            )
         # Clear timeline if remote target remove local source from their previously accepted follows
         if follow.accepted:
             InboxMessage.create_internal(
@@ -441,7 +446,9 @@ class Follow(StatorModel):
 
         # Ensure the Undo actor is the Follow's source
         if data["actor"] != follow.source.actor_uri:
-            raise ValueError("Accept actor does not match its Follow object", data)
+            raise ActorMismatchError(
+                "Undo actor does not match its Follow object", data
+            )
         # Delete the follow
         follow.transition_perform(FollowStates.pending_removal)
 

@@ -3,13 +3,6 @@ import json
 import logging
 from urllib.parse import urldefrag, urlparse
 
-from django.conf import settings
-from django.http import Http404, HttpResponse, HttpResponseBadRequest, JsonResponse
-from django.utils.decorators import method_decorator
-from django.views.decorators.cache import cache_control
-from django.views.decorators.csrf import csrf_exempt
-from django.views.generic import View
-
 from activities.models import Post
 from activities.services import TimelineService
 from core.decorators import cache_page
@@ -21,6 +14,13 @@ from core.signatures import (
     VerificationFormatError,
 )
 from core.views import StaticContentView
+from django.conf import settings
+from django.http import Http404, HttpResponse, HttpResponseBadRequest, JsonResponse
+from django.utils.decorators import method_decorator
+from django.views.decorators.cache import cache_control
+from django.views.decorators.csrf import csrf_exempt
+from django.views.generic import View
+
 from takahe import __version__
 from users.models import Identity, InboxMessage, SystemActor
 from users.models.domain import Domain
